@@ -1,7 +1,5 @@
 import { create } from "zustand";
-import type { ChatMessage, Workspace } from "./mock-data";
-import type { ApiUser, ApiWorkspace, ApiDocument } from "./types";
-import { mockWorkspace, mockMessages } from "./mock-data";
+import type { ApiUser, ApiWorkspace, ApiDocument, ApiConversation, ApiMessage, Citation } from "./types";
 
 type RightTab = "documents" | "pdf";
 
@@ -12,27 +10,39 @@ interface DocQAStore {
   setAuth: (user: ApiUser, token: string) => void;
   clearAuth: () => void;
 
-  /* ── Workspaces (live from API, falls back to mock) ─────── */
+  /* ── Workspaces ─────────────────────────────────────────── */
   apiWorkspaces: ApiWorkspace[];
   setApiWorkspaces: (ws: ApiWorkspace[]) => void;
   activeWorkspaceId: string | null;
   setActiveWorkspaceId: (id: string) => void;
 
-  /* ── Documents (live from API) ──────────────────────────── */
+  /* ── Documents ──────────────────────────────────────────── */
   apiDocuments: ApiDocument[];
   setApiDocuments: (docs: ApiDocument[]) => void;
   addApiDocument: (doc: ApiDocument) => void;
   updateApiDocument: (doc: ApiDocument) => void;
 
-  /* ── Mock workspace (Phase 1 fallback for docs/chat) ────── */
-  workspace: Workspace;
+  /* ── Conversations (live from API) ──────────────────────── */
+  conversations: ApiConversation[];
+  setConversations: (convs: ApiConversation[]) => void;
+  addConversation: (conv: ApiConversation) => void;
+  activeConversationId: string | null;
+  setActiveConversationId: (id: string | null) => void;
 
-  /* ── Conversations ─────────────────────────────────────── */
-  selectedConvId: string;
-  setSelectedConv: (id: string) => void;
-  messages: ChatMessage[];
-  addUserMessage: (content: string) => void;
-  addAssistantMessage: (content: string, citations?: ChatMessage["citations"]) => void;
+  /* ── Messages (live from API) ───────────────────────────── */
+  messages: ApiMessage[];
+  setMessages: (msgs: ApiMessage[]) => void;
+  appendMessage: (msg: ApiMessage) => void;
+
+  /* ── Streaming state ────────────────────────────────────── */
+  streamingContent: string;
+  streamingCitations: Citation[];
+  isStreaming: boolean;
+  setStreamingContent: (content: string) => void;
+  appendStreamingToken: (token: string) => void;
+  setStreamingCitations: (citations: Citation[]) => void;
+  setIsStreaming: (v: boolean) => void;
+  clearStreaming: () => void;
 
   /* ── Right panel tab ───────────────────────────────────── */
   rightTab: RightTab;
@@ -77,40 +87,34 @@ export const useStore = create<DocQAStore>((set) => ({
     apiDocuments: s.apiDocuments.map((d) => d.id === doc.id ? doc : d),
   })),
 
-  /* Mock fallback */
-  workspace: mockWorkspace,
-
   /* Conversations */
-  selectedConvId: mockWorkspace.conversations[0].id,
-  setSelectedConv: (id) => set({ selectedConvId: id }),
+  conversations: [],
+  setConversations: (convs) => set({ conversations: convs }),
+  addConversation: (conv) => set((s) => ({ conversations: [conv, ...s.conversations] })),
+  activeConversationId: null,
+  setActiveConversationId: (id) => set({ activeConversationId: id }),
 
-  messages: mockMessages,
-  addUserMessage: (content) => {
-    const msg: ChatMessage = {
-      id: `msg-${Date.now()}`,
-      role: "user",
-      content,
-      createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
-    set((s) => ({ messages: [...s.messages, msg] }));
-  },
-  addAssistantMessage: (content, citations) => {
-    const msg: ChatMessage = {
-      id: `msg-${Date.now()}`,
-      role: "assistant",
-      content,
-      citations,
-      createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
-    set((s) => ({ messages: [...s.messages, msg] }));
-  },
+  /* Messages */
+  messages: [],
+  setMessages: (msgs) => set({ messages: msgs }),
+  appendMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
+
+  /* Streaming */
+  streamingContent: "",
+  streamingCitations: [],
+  isStreaming: false,
+  setStreamingContent: (content) => set({ streamingContent: content }),
+  appendStreamingToken: (token) => set((s) => ({ streamingContent: s.streamingContent + token })),
+  setStreamingCitations: (citations) => set({ streamingCitations: citations }),
+  setIsStreaming: (v) => set({ isStreaming: v }),
+  clearStreaming: () => set({ streamingContent: "", streamingCitations: [], isStreaming: false }),
 
   /* Right panel */
   rightTab: "documents",
   setRightTab: (tab) => set({ rightTab: tab }),
 
   /* PDF viewer */
-  pdfPage: 36,
+  pdfPage: 1,
   setPdfPage: (page) => set({ pdfPage: page }),
   pdfDocId: null,
   openPdf: (docId, page = 1) => set({ pdfDocId: docId, pdfPage: page, rightTab: "pdf" }),

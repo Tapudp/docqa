@@ -27,6 +27,30 @@ export interface TokenResponse {
 
 export type DocumentStatus = "received" | "parsing" | "parsed" | "chunking" | "indexing" | "ready" | "error";
 
+export interface Citation {
+  chunk_id: string;
+  document_id: string;
+  filename: string;
+  page_numbers: number[];
+  snippet: string;
+}
+
+export interface ApiMessage {
+  id: string;
+  conversation_id: string;
+  role: "user" | "assistant";
+  content: string;
+  citations: Citation[] | null;
+  created_at: string;
+}
+
+export interface ApiConversation {
+  id: string;
+  workspace_id: string;
+  title: string | null;
+  created_at: string;
+}
+
 export interface ApiDocument {
   id: string;
   workspace_id: string;

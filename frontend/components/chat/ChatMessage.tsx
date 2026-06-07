@@ -1,13 +1,13 @@
 "use client";
 
-import type { ChatMessage as ChatMessageType } from "@/lib/mock-data";
+import type { ApiMessage } from "@/lib/types";
 import CitationBadge from "./CitationBadge";
 
 interface Props {
-  message: ChatMessageType;
+  message: ApiMessage | { id: string; role: "user" | "assistant"; content: string; citations?: null; created_at: string };
+  isStreaming?: boolean;
 }
 
-/* Parses **bold** markdown in assistant responses */
 function renderBoldText(text: string) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return parts.map((part, i) => {
@@ -24,18 +24,17 @@ function renderContent(content: string) {
   let listBuffer: string[] = [];
 
   function flushList() {
-    if (listBuffer.length > 0) {
-      elements.push(
-        <ul key={`list-${elements.length}`} style={{ margin: "8px 0 4px 20px", display: "flex", flexDirection: "column", gap: "4px" }}>
-          {listBuffer.map((item, i) => (
-            <li key={i} style={{ fontSize: "15px", lineHeight: 1.6, color: "var(--airbnb-body)" }}>
-              {renderBoldText(item.replace(/^-\s*/, ""))}
-            </li>
-          ))}
-        </ul>
-      );
-      listBuffer = [];
-    }
+    if (listBuffer.length === 0) return;
+    elements.push(
+      <ul key={`list-${elements.length}`} style={{ margin: "8px 0 4px 20px", display: "flex", flexDirection: "column", gap: "4px" }}>
+        {listBuffer.map((item, i) => (
+          <li key={i} style={{ fontSize: "15px", lineHeight: 1.6, color: "var(--airbnb-body)" }}>
+            {renderBoldText(item.replace(/^[-*]\s*/, ""))}
+          </li>
+        ))}
+      </ul>
+    );
+    listBuffer = [];
   }
 
   lines.forEach((line, i) => {
@@ -65,19 +64,16 @@ function renderContent(content: string) {
   return elements;
 }
 
-export default function ChatMessage({ message }: Props) {
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+export default function ChatMessage({ message, isStreaming }: Props) {
   const isUser = message.role === "user";
 
   if (isUser) {
     return (
-      <div
-        className="animate-fade-in"
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          padding: "4px 0",
-        }}
-      >
+      <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 0" }}>
         <div
           style={{
             maxWidth: "72%",
@@ -86,44 +82,21 @@ export default function ChatMessage({ message }: Props) {
             padding: "12px 16px",
           }}
         >
-          <p
-            style={{
-              fontSize: "15px",
-              lineHeight: 1.55,
-              color: "white",
-              margin: 0,
-              fontWeight: 400,
-            }}
-          >
+          <p style={{ fontSize: "15px", lineHeight: 1.55, color: "white", margin: 0 }}>
             {message.content}
           </p>
-          <p
-            style={{
-              fontSize: "11px",
-              color: "rgba(255,255,255,0.7)",
-              marginTop: "6px",
-              textAlign: "right",
-            }}
-          >
-            {message.createdAt}
+          <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.7)", marginTop: "6px", textAlign: "right" }}>
+            {formatTime(message.created_at)}
           </p>
         </div>
       </div>
     );
   }
 
-  /* Assistant message */
+  const citations = (message as ApiMessage).citations;
+
   return (
-    <div
-      className="animate-fade-in"
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: "10px",
-        padding: "4px 0",
-      }}
-    >
-      {/* Avatar */}
+    <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "4px 0" }}>
       <div
         style={{
           flexShrink: 0,
@@ -138,16 +111,10 @@ export default function ChatMessage({ message }: Props) {
         }}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path
-            d="M3 4h10M3 8h7M3 12h9"
-            stroke="white"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          />
+          <path d="M3 4h10M3 8h7M3 12h9" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
         </svg>
       </div>
 
-      {/* Bubble */}
       <div style={{ flex: 1, maxWidth: "80%" }}>
         <div
           style={{
@@ -160,10 +127,22 @@ export default function ChatMessage({ message }: Props) {
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "0px" }}>
             {renderContent(message.content)}
+            {isStreaming && (
+              <span
+                style={{
+                  display: "inline-block",
+                  width: "2px",
+                  height: "16px",
+                  background: "var(--airbnb-rausch)",
+                  marginLeft: "2px",
+                  verticalAlign: "middle",
+                  animation: "blink 1s step-end infinite",
+                }}
+              />
+            )}
           </div>
 
-          {/* Citations */}
-          {message.citations && message.citations.length > 0 && (
+          {citations && citations.length > 0 && (
             <div
               style={{
                 display: "flex",
@@ -174,35 +153,21 @@ export default function ChatMessage({ message }: Props) {
                 borderTop: "1px solid var(--airbnb-hairline-soft)",
               }}
             >
-              <span
-                style={{
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  color: "var(--airbnb-muted)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.5px",
-                  alignSelf: "center",
-                }}
-              >
+              <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--airbnb-muted)", textTransform: "uppercase", letterSpacing: "0.5px", alignSelf: "center" }}>
                 Sources
               </span>
-              {message.citations.map((c, i) => (
+              {citations.map((c, i) => (
                 <CitationBadge key={i} citation={c} />
               ))}
             </div>
           )}
         </div>
 
-        <p
-          style={{
-            fontSize: "11px",
-            color: "var(--airbnb-muted-soft)",
-            marginTop: "4px",
-            paddingLeft: "4px",
-          }}
-        >
-          DocQA · {message.createdAt}
-        </p>
+        {!isStreaming && (
+          <p style={{ fontSize: "11px", color: "var(--airbnb-muted-soft)", marginTop: "4px", paddingLeft: "4px" }}>
+            DocQA · {formatTime(message.created_at)}
+          </p>
+        )}
       </div>
     </div>
   );

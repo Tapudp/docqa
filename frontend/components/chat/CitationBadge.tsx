@@ -1,6 +1,6 @@
 "use client";
 
-import type { Citation } from "@/lib/mock-data";
+import type { Citation } from "@/lib/types";
 import { useStore } from "@/lib/store";
 
 interface Props {
@@ -9,15 +9,12 @@ interface Props {
 
 export default function CitationBadge({ citation }: Props) {
   const openPdf = useStore((s) => s.openPdf);
-
-  function handleClick() {
-    openPdf(citation.documentId, citation.pageNumber);
-  }
+  const firstPage = citation.page_numbers[0] ?? 1;
 
   return (
     <button
-      onClick={handleClick}
-      title={`${citation.documentName} — Page ${citation.pageNumber}${citation.excerpt ? `\n"${citation.excerpt}"` : ""}`}
+      onClick={() => openPdf(citation.document_id, firstPage)}
+      title={`${citation.filename} — p.${citation.page_numbers.join(",")}\n"${citation.snippet}"`}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -33,6 +30,10 @@ export default function CitationBadge({ citation }: Props) {
         verticalAlign: "middle",
         lineHeight: 1.5,
         transition: "background-color 0.12s ease, border-color 0.12s ease",
+        maxWidth: "200px",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
       }}
       onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.96)")}
       onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
@@ -48,7 +49,7 @@ export default function CitationBadge({ citation }: Props) {
           fill="none"
         />
       </svg>
-      Page {citation.pageNumber}
+      {citation.filename.replace(/\.[^.]+$/, "")} p.{firstPage}
     </button>
   );
 }

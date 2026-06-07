@@ -14,3 +14,4 @@ celery[redis]==5.3.6
 pypdf==4.3.1
 pgvector==0.3.6
 fastembed==0.2.7
+openai==1.58.1

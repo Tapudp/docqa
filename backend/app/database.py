@@ -18,6 +18,13 @@ async def get_db() -> AsyncSession:  # type: ignore[return]
 
 
 async def create_tables() -> None:
+    # Import all models so SQLAlchemy knows about them before create_all
+    import app.models.user  # noqa: F401
+    import app.models.workspace  # noqa: F401
+    import app.models.document  # noqa: F401
+    import app.models.chunk  # noqa: F401
+    import app.models.conversation  # noqa: F401
+
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)

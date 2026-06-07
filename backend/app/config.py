@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     # Redis / Celery
     redis_url: str = "redis://redis:6379/0"
 
+    # LLM
+    llm_provider: str = "ollama"          # ollama | anthropic | openai
+    llm_base_url: str = "http://host.docker.internal:11434"
+    llm_model: str = "llama3.2"
+    llm_api_key: str = ""                 # for anthropic/openai
+
     # App
     app_name: str = "NpuDen DocQA"
     debug: bool = False

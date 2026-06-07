@@ -1,4 +1,4 @@
-import type { ApiUser, ApiWorkspace, ApiDocument, TokenResponse } from "./types";
+import type { ApiUser, ApiWorkspace, ApiDocument, ApiConversation, ApiMessage, TokenResponse } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -91,6 +91,69 @@ export const api = {
 
     get: (documentId: string) =>
       request<ApiDocument>(`/api/documents/${documentId}`),
+  },
+
+  chat: {
+    createConversation: (workspaceId: string) =>
+      request<ApiConversation>(`/api/workspaces/${workspaceId}/conversations`, { method: "POST" }),
+
+    listConversations: (workspaceId: string) =>
+      request<ApiConversation[]>(`/api/workspaces/${workspaceId}/conversations`),
+
+    listMessages: (conversationId: string) =>
+      request<ApiMessage[]>(`/api/conversations/${conversationId}/messages`),
+
+    streamChat: (conversationId: string, question: string): EventSource => {
+      const token = getToken();
+      // Use fetch-based SSE via a custom helper — EventSource doesn't support POST
+      // We return a controller that mimics EventSource events via callbacks
+      throw new Error("use streamChatFetch instead");
+    },
+
+    streamChatFetch: async (
+      conversationId: string,
+      question: string,
+      onCitations: (citations: unknown[]) => void,
+      onToken: (token: string) => void,
+      onDone: () => void,
+      onError: (err: string) => void,
+    ): Promise<void> => {
+      const token = getToken();
+      const res = await fetch(`${BASE}/api/conversations/${conversationId}/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ question }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ detail: "Request failed" }));
+        onError(typeof body.detail === "string" ? body.detail : `HTTP ${res.status}`);
+        return;
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const payload = JSON.parse(line.slice(6));
+          if (payload.type === "citations") onCitations(payload.citations);
+          else if (payload.type === "token") onToken(payload.content);
+          else if (payload.type === "done") onDone();
+          else if (payload.type === "error") onError(payload.message);
+        }
+      }
+    },
   },
 };
 

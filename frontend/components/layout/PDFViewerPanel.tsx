@@ -6,12 +6,14 @@ import type { ApiDocument } from "@/lib/types";
 
 export default function RightPanel() {
   const {
-    workspace,
+    apiWorkspaces, activeWorkspaceId,
     apiDocuments,
     rightTab, setRightTab,
     pdfDocId, pdfPage, setPdfPage, openPdf, closePdf,
     setUploadOpen,
   } = useStore();
+
+  const activeWorkspace = apiWorkspaces.find((w) => w.id === activeWorkspaceId);
 
   // Use real docs when available, fall back to empty (mock chat still works)
   const docs = apiDocuments;
@@ -85,7 +87,7 @@ export default function RightPanel() {
           >
             <div>
               <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--airbnb-ink)" }}>
-                {workspace.name}
+                {activeWorkspace?.name ?? "Documents"}
               </p>
               <p style={{ fontSize: "11px", color: "var(--airbnb-muted)", marginTop: "1px" }}>
                 {docs.filter((d) => d.status === "ready").length} ready ·{" "}
