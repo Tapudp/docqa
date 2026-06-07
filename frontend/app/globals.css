@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer base {
+  :root {
+    /* ── Airbnb Design Tokens ─────────────────────────────── */
+    --airbnb-rausch:          #ff385c;
+    --airbnb-rausch-active:   #e00b41;
+    --airbnb-rausch-disabled: #ffd1da;
+    --airbnb-ink:             #222222;
+    --airbnb-body:            #3f3f3f;
+    --airbnb-muted:           #6a6a6a;
+    --airbnb-muted-soft:      #929292;
+    --airbnb-hairline:        #dddddd;
+    --airbnb-hairline-soft:   #ebebeb;
+    --airbnb-border-strong:   #c1c1c1;
+    --airbnb-canvas:          #ffffff;
+    --airbnb-surface-soft:    #f7f7f7;
+    --airbnb-surface-card:    #ffffff;
+    --airbnb-surface-strong:  #f2f2f2;
+    --airbnb-on-primary:      #ffffff;
+    --airbnb-error:           #c13515;
+
+    /* ── Radius ───────────────────────────────────────────── */
+    --radius-xs:   4px;
+    --radius-sm:   8px;
+    --radius-md:   14px;
+    --radius-lg:   20px;
+    --radius-xl:   32px;
+    --radius-full: 9999px;
+
+    /* ── Shadow ───────────────────────────────────────────── */
+    --shadow-card:
+      rgba(0,0,0,0.02) 0 0 0 1px,
+      rgba(0,0,0,0.04) 0 2px 6px,
+      rgba(0,0,0,0.10) 0 4px 8px;
+
+    /* ── shadcn-compatible CSS vars ───────────────────────── */
+    --background:           #ffffff;
+    --foreground:           #222222;
+    --card:                 #ffffff;
+    --card-foreground:      #222222;
+    --popover:              #ffffff;
+    --popover-foreground:   #222222;
+    --primary:              #ff385c;
+    --primary-foreground:   #ffffff;
+    --secondary:            #f7f7f7;
+    --secondary-foreground: #222222;
+    --muted:                #f7f7f7;
+    --muted-foreground:     #6a6a6a;
+    --accent:               #f7f7f7;
+    --accent-foreground:    #222222;
+    --destructive:          #c13515;
+    --destructive-foreground:#ffffff;
+    --border:               #dddddd;
+    --input:                #dddddd;
+    --ring:                 #222222;
+    --radius:               0.5rem;
+  }
+
+  * {
+    box-sizing: border-box;
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: 'Inter', -apple-system, system-ui, 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* ── Animation keyframes ─────────────────────────────────── */
+@keyframes slideUp {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.22s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.18s ease both;
+}

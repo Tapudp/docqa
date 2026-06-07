@@ -1,0 +1,409 @@
+"use client";
+
+import { useState, useRef, useEffect } from "react";
+import { useStore } from "@/lib/store";
+import Sidebar from "@/components/layout/Sidebar";
+import RightPanel from "@/components/layout/PDFViewerPanel";
+import ChatMessage from "@/components/chat/ChatMessage";
+import UploadZone from "@/components/documents/UploadZone";
+
+export default function WorkspacePage() {
+  const { workspace, messages, addUserMessage, uploadOpen, selectedConvId } = useStore();
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const activeConv = workspace.conversations.find((c) => c.id === selectedConvId);
+
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  function handleSend() {
+    const text = input.trim();
+    if (!text || sending) return;
+    setInput("");
+    setSending(true);
+    addUserMessage(text);
+    setTimeout(() => setSending(false), 400);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }
+
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`;
+  }, [input]);
+
+  return (
+    <>
+      {/* Top nav */}
+      <header
+        style={{
+          height: "52px",
+          flexShrink: 0,
+          background: "var(--airbnb-canvas)",
+          borderBottom: "1px solid var(--airbnb-hairline)",
+          display: "flex",
+          alignItems: "center",
+          padding: "0 20px",
+          gap: "16px",
+        }}
+      >
+        {/* Logo */}
+        <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+          <div
+            style={{
+              width: "24px",
+              height: "24px",
+              background: "var(--airbnb-rausch)",
+              borderRadius: "6px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+              <path d="M2 3h9M2 6.5h6M2 10h7" stroke="white" strokeWidth="1.7" strokeLinecap="round" />
+            </svg>
+          </div>
+          <span
+            style={{
+              fontSize: "14px",
+              fontWeight: 700,
+              color: "var(--airbnb-ink)",
+              letterSpacing: "-0.2px",
+            }}
+          >
+            NpuDen DocQA
+          </span>
+        </div>
+
+        {/* Divider */}
+        <div style={{ width: "1px", height: "18px", background: "var(--airbnb-hairline)" }} />
+
+        {/* Conversation title */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span
+            style={{
+              fontSize: "14px",
+              fontWeight: 500,
+              color: "var(--airbnb-body)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              display: "block",
+            }}
+          >
+            {activeConv?.title ?? "Untitled conversation"}
+          </span>
+        </div>
+
+        {/* Right: retrieval badge + user */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <span
+            style={{
+              fontSize: "12px",
+              color: "var(--airbnb-muted)",
+              background: "var(--airbnb-surface-soft)",
+              border: "1px solid var(--airbnb-hairline)",
+              borderRadius: "var(--radius-full)",
+              padding: "3px 10px",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {workspace.retrievalMode} retrieval
+          </span>
+
+          {/* Divider */}
+          <div style={{ width: "1px", height: "18px", background: "var(--airbnb-hairline)" }} />
+
+          {/* User pill */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              cursor: "pointer",
+              padding: "4px 10px 4px 4px",
+              borderRadius: "var(--radius-full)",
+              border: "1px solid var(--airbnb-hairline)",
+              background: "var(--airbnb-canvas)",
+              transition: "box-shadow 0.15s ease",
+            }}
+          >
+            {/* Avatar */}
+            <div
+              style={{
+                width: "28px",
+                height: "28px",
+                borderRadius: "var(--radius-full)",
+                background: "var(--airbnb-ink)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ fontSize: "12px", fontWeight: 600, color: "white" }}>D</span>
+            </div>
+            <div style={{ lineHeight: 1 }}>
+              <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--airbnb-ink)", margin: 0 }}>
+                Divyesh
+              </p>
+              <p style={{ fontSize: "11px", color: "var(--airbnb-muted)", margin: "2px 0 0" }}>
+                Workspace Admin
+              </p>
+            </div>
+            {/* Caret */}
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginLeft: "2px" }}>
+              <path d="M2 4l3 3 3-3" stroke="#6a6a6a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+        </div>
+      </header>
+
+      {/* Body: 3-column */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
+        {/* Left sidebar — conversations */}
+        <Sidebar />
+
+        {/* Center — chat */}
+        <main
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            background: "#fafafa",
+          }}
+        >
+          {/* Messages scroll area */}
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              overflowX: "hidden",
+              padding: "28px 40px",
+            }}
+          >
+            {messages.length === 0 && (
+              <div
+                style={{
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "12px",
+                  paddingBottom: "80px",
+                }}
+              >
+                <div
+                  style={{
+                    width: "52px",
+                    height: "52px",
+                    borderRadius: "var(--radius-full)",
+                    background: "var(--airbnb-surface-strong)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                    <path
+                      d="M19 13a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"
+                      stroke="#c1c1c1"
+                      strokeWidth="1.6"
+                      fill="none"
+                    />
+                  </svg>
+                </div>
+                <p style={{ fontSize: "15px", fontWeight: 500, color: "var(--airbnb-muted)" }}>
+                  Ask anything about your documents
+                </p>
+                <p style={{ fontSize: "13px", color: "var(--airbnb-muted-soft)" }}>
+                  Answers come with page citations — click to view the source
+                </p>
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "18px",
+                maxWidth: "720px",
+                margin: "0 auto",
+              }}
+            >
+              {messages.map((msg) => (
+                <ChatMessage key={msg.id} message={msg} />
+              ))}
+
+              {sending && (
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div
+                    style={{
+                      width: "30px",
+                      height: "30px",
+                      borderRadius: "var(--radius-full)",
+                      background: "var(--airbnb-rausch)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M2 3.5h10M2 7h6M2 10.5h8" stroke="white" strokeWidth="1.7" strokeLinecap="round" />
+                    </svg>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "5px",
+                      padding: "12px 14px",
+                      background: "var(--airbnb-canvas)",
+                      border: "1px solid var(--airbnb-hairline)",
+                      borderRadius: "4px var(--radius-md) var(--radius-md) var(--radius-md)",
+                    }}
+                  >
+                    {[0, 1, 2].map((i) => (
+                      <div
+                        key={i}
+                        style={{
+                          width: "6px",
+                          height: "6px",
+                          borderRadius: "50%",
+                          background: "var(--airbnb-muted)",
+                          animation: `bounce 1s ease ${i * 0.15}s infinite`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div ref={chatBottomRef} />
+            </div>
+          </div>
+
+          {/* Input bar */}
+          <div
+            style={{
+              borderTop: "1px solid var(--airbnb-hairline)",
+              padding: "14px 40px 18px",
+              background: "var(--airbnb-canvas)",
+            }}
+          >
+            <div
+              style={{
+                maxWidth: "720px",
+                margin: "0 auto",
+                display: "flex",
+                alignItems: "flex-end",
+                gap: "10px",
+                background: "var(--airbnb-canvas)",
+                border: "1px solid var(--airbnb-hairline)",
+                borderRadius: "var(--radius-md)",
+                padding: "10px 12px 10px 16px",
+                boxShadow: "var(--shadow-card)",
+                transition: "border-color 0.15s ease",
+              }}
+              onFocusCapture={(e) => { e.currentTarget.style.borderColor = "var(--airbnb-ink)"; }}
+              onBlurCapture={(e) => { e.currentTarget.style.borderColor = "var(--airbnb-hairline)"; }}
+            >
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask a question about your documents…"
+                rows={1}
+                style={{
+                  flex: 1,
+                  resize: "none",
+                  border: "none",
+                  outline: "none",
+                  fontSize: "15px",
+                  lineHeight: "1.5",
+                  color: "var(--airbnb-ink)",
+                  background: "transparent",
+                  maxHeight: "160px",
+                  padding: 0,
+                  fontFamily: "inherit",
+                }}
+              />
+              <button
+                onClick={handleSend}
+                disabled={!input.trim() || sending}
+                style={{
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "var(--radius-full)",
+                  background:
+                    !input.trim() || sending
+                      ? "var(--airbnb-surface-strong)"
+                      : "var(--airbnb-rausch)",
+                  border: "none",
+                  cursor: !input.trim() || sending ? "not-allowed" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  transition: "background-color 0.12s ease, transform 0.1s ease",
+                }}
+                onMouseDown={(e) => {
+                  if (input.trim()) e.currentTarget.style.transform = "scale(0.92)";
+                }}
+                onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path
+                    d="M1.5 7h11M8.5 3l4 4-4 4"
+                    stroke={!input.trim() || sending ? "#929292" : "white"}
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            </div>
+            <p
+              style={{
+                textAlign: "center",
+                fontSize: "11px",
+                color: "var(--airbnb-muted-soft)",
+                marginTop: "8px",
+              }}
+            >
+              Searching {workspace.documents.filter((d) => d.status === "ready").length} documents · BM25 + vector · Enter to send
+            </p>
+          </div>
+        </main>
+
+        {/* Right panel — tabbed: Documents | PDF Viewer */}
+        <RightPanel />
+      </div>
+
+      {uploadOpen && <UploadZone />}
+
+      <style>{`
+        @keyframes bounce {
+          0%, 100% { transform: translateY(0); opacity: 0.4; }
+          50% { transform: translateY(-4px); opacity: 1; }
+        }
+      `}</style>
+    </>
+  );
+}
