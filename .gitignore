@@ -1,36 +1,85 @@
-node_modules
-
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
-.yarn/install-state.gz
-
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
+# ── OS ───────────────────────────────────────────────────────
 .DS_Store
-*.pem
+.DS_Store?
+Thumbs.db
+ehthumbs.db
 
-# debug
+# ── Editors ──────────────────────────────────────────────────
+.idea/
+.vscode/settings.json
+*.swp
+*.swo
+*.swn
+*~
+
+# ── Environment & secrets ────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.development
+.env.staging
+.env.production
+*.pem
+secrets/
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# local env files
-.env*.local
+# ── Node / Frontend ──────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
 
-# vercel
-.vercel
-
-# typescript
+# Next.js build output (matches at any depth, not just root)
+.next/
+out/
+build/
 *.tsbuildinfo
 next-env.d.ts
+
+# Vercel
+.vercel
+
+# ── Python / FastAPI backend ─────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+.eggs/
+dist/
+*.so
+*.dylib
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test & coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+.tox/
+
+# Type checkers & linters
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# ── Docker & infra ───────────────────────────────────────────
+.docker/
+
+# ── Misc ─────────────────────────────────────────────────────
+*.bak
+*.tmp
