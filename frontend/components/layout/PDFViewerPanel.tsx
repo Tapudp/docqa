@@ -2,17 +2,20 @@
 
 import { useStore } from "@/lib/store";
 import DocumentCard from "@/components/documents/DocumentCard";
-import type { DocFile } from "@/lib/mock-data";
+import type { ApiDocument } from "@/lib/types";
 
 export default function RightPanel() {
   const {
     workspace,
+    apiDocuments,
     rightTab, setRightTab,
     pdfDocId, pdfPage, setPdfPage, openPdf, closePdf,
     setUploadOpen,
   } = useStore();
 
-  const pdfDoc = workspace.documents.find((d) => d.id === pdfDocId);
+  // Use real docs when available, fall back to empty (mock chat still works)
+  const docs = apiDocuments;
+  const pdfDoc = docs.find((d) => d.id === pdfDocId);
 
   return (
     <aside
@@ -49,7 +52,7 @@ export default function RightPanel() {
               <path d="M7.5 1v2.5H10.5" stroke="currentColor" strokeWidth="1.2" fill="none" />
             </svg>
           }
-          count={workspace.documents.length}
+          count={docs.length}
           active={rightTab === "documents"}
           onClick={() => setRightTab("documents")}
         />
@@ -85,8 +88,8 @@ export default function RightPanel() {
                 {workspace.name}
               </p>
               <p style={{ fontSize: "11px", color: "var(--airbnb-muted)", marginTop: "1px" }}>
-                {workspace.documents.filter((d) => d.status === "ready").length} ready ·{" "}
-                {workspace.documents.length} total
+                {docs.filter((d) => d.status === "ready").length} ready ·{" "}
+                {docs.length} total
               </p>
             </div>
             <button
@@ -119,32 +122,33 @@ export default function RightPanel() {
           </div>
 
           {/* Coverage summary bar */}
-          <div style={{ padding: "0 16px 10px", flexShrink: 0 }}>
-            <CoverageBar docs={workspace.documents} />
-          </div>
+          {docs.length > 0 && (
+            <div style={{ padding: "0 16px 10px", flexShrink: 0 }}>
+              <CoverageBar docs={docs} />
+            </div>
+          )}
 
           {/* Scrollable list */}
-          <div
-            style={{
-              flex: 1,
-              overflowY: "auto",
-              overflowX: "hidden",
-              padding: "0 8px 12px",
-            }}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-              {workspace.documents.map((doc) => (
-                <DocumentCard
-                  key={doc.id}
-                  doc={doc}
-                  onClick={() => {
-                    if (doc.status === "ready" || doc.status === "partial") {
-                      openPdf(doc.id, 1);
-                    }
-                  }}
-                />
-              ))}
-            </div>
+          <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "0 8px 12px" }}>
+            {docs.length === 0 ? (
+              <div style={{ padding: "40px 16px", textAlign: "center" }}>
+                <p style={{ fontSize: "13px", color: "var(--airbnb-muted)" }}>
+                  No documents yet. Upload one to get started.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                {docs.map((doc) => (
+                  <DocumentCard
+                    key={doc.id}
+                    doc={doc}
+                    onClick={() => {
+                      if (doc.status === "ready") openPdf(doc.id, 1);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -210,10 +214,10 @@ export default function RightPanel() {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {pdfDoc.name}
+                    {pdfDoc.filename}
                   </p>
                   <p style={{ fontSize: "11px", color: "var(--airbnb-muted)", marginTop: "1px" }}>
-                    Page {pdfPage} of {pdfDoc.totalPages}
+                    Page {pdfPage} of {pdfDoc.total_pages ?? "?"}
                   </p>
                 </div>
                 <button
@@ -257,11 +261,11 @@ export default function RightPanel() {
                   <input
                     type="number"
                     min={1}
-                    max={pdfDoc.totalPages}
+                    max={pdfDoc.total_pages ?? 999}
                     value={pdfPage}
                     onChange={(e) => {
                       const v = parseInt(e.target.value, 10);
-                      if (!isNaN(v) && v >= 1 && v <= pdfDoc.totalPages) setPdfPage(v);
+                      if (!isNaN(v) && v >= 1 && v <= (pdfDoc.total_pages ?? 999)) setPdfPage(v);
                     }}
                     style={{
                       width: "44px",
@@ -275,12 +279,12 @@ export default function RightPanel() {
                       outline: "none",
                     }}
                   />
-                  <span style={{ fontSize: "11px", color: "var(--airbnb-muted)" }}>/ {pdfDoc.totalPages}</span>
+                  <span style={{ fontSize: "11px", color: "var(--airbnb-muted)" }}>/ {pdfDoc.total_pages ?? "?"}</span>
                 </div>
                 <NavBtn
                   dir="next"
-                  disabled={pdfPage >= pdfDoc.totalPages}
-                  onClick={() => setPdfPage(Math.min(pdfDoc.totalPages, pdfPage + 1))}
+                  disabled={pdfDoc.total_pages != null && pdfPage >= pdfDoc.total_pages}
+                  onClick={() => setPdfPage(Math.min(pdfDoc.total_pages ?? 999, pdfPage + 1))}
                 />
               </div>
 
@@ -486,10 +490,10 @@ function NavBtn({
   );
 }
 
-function CoverageBar({ docs }: { docs: DocFile[] }) {
+function CoverageBar({ docs }: { docs: ApiDocument[] }) {
   const ready = docs.filter((d) => d.status === "ready").length;
-  const partial = docs.filter((d) => d.status === "partial").length;
-  const processing = docs.filter((d) => d.status === "parsing" || d.status === "indexing").length;
+  const partial = docs.filter((d) => d.status === "parsed" && d.total_pages != null && d.parsed_pages < d.total_pages).length;
+  const processing = docs.filter((d) => ["received", "parsing", "chunking", "indexing"].includes(d.status)).length;
   const total = docs.length;
 
   const pctReady = (ready / total) * 100;

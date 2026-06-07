@@ -1,14 +1,60 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
+import { api } from "@/lib/api";
 import Sidebar from "@/components/layout/Sidebar";
 import RightPanel from "@/components/layout/PDFViewerPanel";
 import ChatMessage from "@/components/chat/ChatMessage";
 import UploadZone from "@/components/documents/UploadZone";
 
 export default function WorkspacePage() {
-  const { workspace, messages, addUserMessage, uploadOpen, selectedConvId } = useStore();
+  const router = useRouter();
+  const {
+    workspace, messages, addUserMessage, uploadOpen, selectedConvId,
+    currentUser, clearAuth,
+    setApiWorkspaces, activeWorkspaceId, setActiveWorkspaceId,
+    setApiDocuments, updateApiDocument,
+  } = useStore();
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+
+  // Fetch workspaces + documents once after auth is confirmed
+  useEffect(() => {
+    api.workspaces.list().then((workspaces) => {
+      setApiWorkspaces(workspaces);
+      if (workspaces.length > 0) {
+        const wsId = workspaces[0].id;
+        setActiveWorkspaceId(wsId);
+        api.documents.list(wsId).then(setApiDocuments).catch(() => {});
+      }
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Poll every 2s for documents that are still being processed
+  useEffect(() => {
+    const PROCESSING = ["received", "parsing", "chunking", "indexing"];
+    const interval = setInterval(async () => {
+      const inProgress = useStore.getState().apiDocuments.filter((d) =>
+        PROCESSING.includes(d.status)
+      );
+      for (const doc of inProgress) {
+        try {
+          const updated = await api.documents.get(doc.id);
+          updateApiDocument(updated);
+        } catch {}
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleLogout() {
+    clearAuth();
+    router.replace("/login");
+  }
+
+  const displayName = currentUser?.display_name || currentUser?.email?.split("@")[0] || "User";
+  const avatarInitial = displayName[0].toUpperCase();
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -126,47 +172,105 @@ export default function WorkspacePage() {
           {/* Divider */}
           <div style={{ width: "1px", height: "18px", background: "var(--airbnb-hairline)" }} />
 
-          {/* User pill */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              cursor: "pointer",
-              padding: "4px 10px 4px 4px",
-              borderRadius: "var(--radius-full)",
-              border: "1px solid var(--airbnb-hairline)",
-              background: "var(--airbnb-canvas)",
-              transition: "box-shadow 0.15s ease",
-            }}
-          >
-            {/* Avatar */}
-            <div
+          {/* User pill + logout menu */}
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => setUserMenuOpen((v) => !v)}
               style={{
-                width: "28px",
-                height: "28px",
-                borderRadius: "var(--radius-full)",
-                background: "var(--airbnb-ink)",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
+                gap: "8px",
+                cursor: "pointer",
+                padding: "4px 10px 4px 4px",
+                borderRadius: "var(--radius-full)",
+                border: "1px solid var(--airbnb-hairline)",
+                background: "var(--airbnb-canvas)",
+                transition: "box-shadow 0.15s ease",
+                fontFamily: "inherit",
               }}
+              onMouseEnter={(e) => (e.currentTarget.style.boxShadow = "0 0 0 3px var(--airbnb-hairline)")}
+              onMouseLeave={(e) => (e.currentTarget.style.boxShadow = "none")}
             >
-              <span style={{ fontSize: "12px", fontWeight: 600, color: "white" }}>D</span>
-            </div>
-            <div style={{ lineHeight: 1 }}>
-              <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--airbnb-ink)", margin: 0 }}>
-                Divyesh
-              </p>
-              <p style={{ fontSize: "11px", color: "var(--airbnb-muted)", margin: "2px 0 0" }}>
-                Workspace Admin
-              </p>
-            </div>
-            {/* Caret */}
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginLeft: "2px" }}>
-              <path d="M2 4l3 3 3-3" stroke="#6a6a6a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+              <div
+                style={{
+                  width: "28px",
+                  height: "28px",
+                  borderRadius: "var(--radius-full)",
+                  background: "var(--airbnb-rausch)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <span style={{ fontSize: "12px", fontWeight: 600, color: "white" }}>{avatarInitial}</span>
+              </div>
+              <div style={{ lineHeight: 1, textAlign: "left" }}>
+                <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--airbnb-ink)", margin: 0 }}>
+                  {displayName}
+                </p>
+                <p style={{ fontSize: "11px", color: "var(--airbnb-muted)", margin: "2px 0 0" }}>
+                  {currentUser?.role ?? "viewer"}
+                </p>
+              </div>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginLeft: "2px" }}>
+                <path d="M2 4l3 3 3-3" stroke="#6a6a6a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+
+            {/* Dropdown */}
+            {userMenuOpen && (
+              <>
+                {/* Scrim to close */}
+                <div
+                  style={{ position: "fixed", inset: 0, zIndex: 49 }}
+                  onClick={() => setUserMenuOpen(false)}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 8px)",
+                    right: 0,
+                    zIndex: 50,
+                    background: "var(--airbnb-canvas)",
+                    border: "1px solid var(--airbnb-hairline)",
+                    borderRadius: "var(--radius-sm)",
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.10)",
+                    minWidth: "180px",
+                    overflow: "hidden",
+                    animation: "slideUp 0.15s cubic-bezier(0.32,0.72,0,1)",
+                  }}
+                >
+                  <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--airbnb-hairline)" }}>
+                    <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--airbnb-ink)", margin: 0 }}>
+                      {displayName}
+                    </p>
+                    <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: "2px 0 0" }}>
+                      {currentUser?.email}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    style={{
+                      width: "100%",
+                      padding: "10px 14px",
+                      textAlign: "left",
+                      fontSize: "14px",
+                      color: "var(--airbnb-error)",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      transition: "background-color 0.1s ease",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--airbnb-surface-soft)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                  >
+                    Sign out
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </header>

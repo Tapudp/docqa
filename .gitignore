@@ -19,6 +19,7 @@ ehthumbs.db
 .env.development
 .env.staging
 .env.production
+backend/.env
 *.pem
 secrets/
 

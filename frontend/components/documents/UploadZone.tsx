@@ -2,13 +2,16 @@
 
 import { useState, useCallback } from "react";
 import { useStore } from "@/lib/store";
+import { api, ApiError } from "@/lib/api";
 
 const ACCEPTED = [".pdf", ".docx", ".xlsx", ".pptx", ".png", ".jpg", ".tiff"];
 
 export default function UploadZone() {
-  const setUploadOpen = useStore((s) => s.setUploadOpen);
+  const { setUploadOpen, activeWorkspaceId, addApiDocument } = useStore();
   const [dragging, setDragging] = useState(false);
   const [staged, setStaged] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -33,6 +36,25 @@ export default function UploadZone() {
     setStaged((prev) => prev.filter((_, i) => i !== index));
   };
 
+  async function handleUpload() {
+    if (!activeWorkspaceId || staged.length === 0) return;
+    setUploading(true);
+    setUploadError("");
+    try {
+      for (const file of staged) {
+        const doc = await api.documents.upload(activeWorkspaceId, file);
+        addApiDocument(doc);
+      }
+      setStaged([]);
+      setUploadOpen(false);
+    } catch (err) {
+      if (err instanceof ApiError) setUploadError(err.message);
+      else setUploadError("Upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   return (
     <div
       style={{
@@ -53,7 +75,7 @@ export default function UploadZone() {
           background: "rgba(0,0,0,0.48)",
           cursor: "pointer",
         }}
-        onClick={() => setUploadOpen(false)}
+        onClick={() => { if (!uploading) setUploadOpen(false); }}
       />
 
       {/* Modal */}
@@ -80,27 +102,17 @@ export default function UploadZone() {
             borderBottom: "1px solid var(--airbnb-hairline)",
           }}
         >
-          <h2
-            style={{
-              fontSize: "18px",
-              fontWeight: 600,
-              color: "var(--airbnb-ink)",
-            }}
-          >
+          <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--airbnb-ink)" }}>
             Upload documents
           </h2>
           <button
-            onClick={() => setUploadOpen(false)}
+            onClick={() => { if (!uploading) setUploadOpen(false); }}
             style={{
-              width: "32px",
-              height: "32px",
+              width: "32px", height: "32px",
               borderRadius: "var(--radius-full)",
               background: "var(--airbnb-surface-strong)",
-              border: "none",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
+              border: "none", cursor: uploading ? "not-allowed" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
               transition: "background-color 0.12s ease",
             }}
           >
@@ -129,52 +141,25 @@ export default function UploadZone() {
           >
             <div
               style={{
-                width: "48px",
-                height: "48px",
+                width: "48px", height: "48px",
                 borderRadius: "var(--radius-full)",
                 background: dragging ? "#ffd1da" : "var(--airbnb-surface-strong)",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
                 marginBottom: "16px",
                 transition: "background-color 0.15s ease",
               }}
             >
               <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-                <path
-                  d="M11 14V4M7 8l4-4 4 4"
-                  stroke={dragging ? "var(--airbnb-rausch)" : "#6a6a6a"}
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M3 16v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1"
-                  stroke={dragging ? "var(--airbnb-rausch)" : "#6a6a6a"}
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                />
+                <path d="M11 14V4M7 8l4-4 4 4" stroke={dragging ? "var(--airbnb-rausch)" : "#6a6a6a"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M3 16v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1" stroke={dragging ? "var(--airbnb-rausch)" : "#6a6a6a"} strokeWidth="1.8" strokeLinecap="round" />
               </svg>
             </div>
 
-            <p
-              style={{
-                fontSize: "15px",
-                fontWeight: 500,
-                color: "var(--airbnb-ink)",
-                marginBottom: "4px",
-              }}
-            >
+            <p style={{ fontSize: "15px", fontWeight: 500, color: "var(--airbnb-ink)", marginBottom: "4px" }}>
               {dragging ? "Drop to upload" : "Drag & drop files here"}
             </p>
-            <p
-              style={{
-                fontSize: "13px",
-                color: "var(--airbnb-muted)",
-                marginBottom: "16px",
-              }}
-            >
-              PDF, DOCX, XLSX, PPTX, PNG, JPG, TIFF supported
+            <p style={{ fontSize: "13px", color: "var(--airbnb-muted)", marginBottom: "16px" }}>
+              PDF, DOCX, XLSX, PPTX, PNG, JPG, TIFF · Max 200 MB
             </p>
 
             <label
@@ -184,9 +169,7 @@ export default function UploadZone() {
                 background: "var(--airbnb-canvas)",
                 border: "1px solid var(--airbnb-border-strong)",
                 borderRadius: "var(--radius-sm)",
-                fontSize: "14px",
-                fontWeight: 500,
-                color: "var(--airbnb-ink)",
+                fontSize: "14px", fontWeight: 500, color: "var(--airbnb-ink)",
                 cursor: "pointer",
                 transition: "background-color 0.12s ease",
               }}
@@ -209,9 +192,7 @@ export default function UploadZone() {
                 <div
                   key={i}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
+                    display: "flex", alignItems: "center", gap: "10px",
                     padding: "10px 12px",
                     background: "var(--airbnb-surface-soft)",
                     borderRadius: "var(--radius-sm)",
@@ -219,40 +200,19 @@ export default function UploadZone() {
                   }}
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-                    <path
-                      d="M3 2a1 1 0 0 1 1-1h5.5L13 5.5V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2z"
-                      stroke="#6a6a6a"
-                      strokeWidth="1.2"
-                      fill="none"
-                    />
+                    <path d="M3 2a1 1 0 0 1 1-1h5.5L13 5.5V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2z" stroke="#6a6a6a" strokeWidth="1.2" fill="none" />
                     <path d="M8.5 1v4.5H13" stroke="#6a6a6a" strokeWidth="1.2" fill="none" />
                   </svg>
-                  <span
-                    style={{
-                      flex: 1,
-                      fontSize: "13px",
-                      fontWeight: 500,
-                      color: "var(--airbnb-ink)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
+                  <span style={{ flex: 1, fontSize: "13px", fontWeight: 500, color: "var(--airbnb-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {file.name}
                   </span>
                   <span style={{ fontSize: "12px", color: "var(--airbnb-muted)", flexShrink: 0 }}>
-                    {(file.size / 1024).toFixed(0)} KB
+                    {file.size > 1024 * 1024 ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `${(file.size / 1024).toFixed(0)} KB`}
                   </span>
                   <button
                     onClick={() => removeFile(i)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      padding: "2px",
-                      display: "flex",
-                      flexShrink: 0,
-                    }}
+                    disabled={uploading}
+                    style={{ background: "none", border: "none", cursor: uploading ? "not-allowed" : "pointer", padding: "2px", display: "flex", flexShrink: 0 }}
                   >
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                       <path d="M1 1l10 10M11 1L1 11" stroke="#929292" strokeWidth="1.5" strokeLinecap="round" />
@@ -262,64 +222,65 @@ export default function UploadZone() {
               ))}
             </div>
           )}
+
+          {uploadError && (
+            <p style={{ marginTop: "12px", fontSize: "13px", color: "var(--airbnb-error)" }}>
+              {uploadError}
+            </p>
+          )}
         </div>
 
         {/* Footer */}
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
             padding: "16px 24px",
             borderTop: "1px solid var(--airbnb-hairline)",
             background: "var(--airbnb-surface-soft)",
           }}
         >
           <p style={{ fontSize: "12px", color: "var(--airbnb-muted)" }}>
-            Parser: PaddleOCR · Max 500 MB per file
+            Parser: PaddleOCR · Max 200 MB per file
           </p>
           <div style={{ display: "flex", gap: "8px" }}>
             <button
               onClick={() => { setStaged([]); setUploadOpen(false); }}
+              disabled={uploading}
               style={{
-                height: "40px",
-                padding: "0 18px",
+                height: "40px", padding: "0 18px",
                 background: "var(--airbnb-canvas)",
                 border: "1px solid var(--airbnb-border-strong)",
                 borderRadius: "var(--radius-sm)",
-                fontSize: "14px",
-                fontWeight: 500,
-                color: "var(--airbnb-ink)",
-                cursor: "pointer",
+                fontSize: "14px", fontWeight: 500, color: "var(--airbnb-ink)",
+                cursor: uploading ? "not-allowed" : "pointer",
                 transition: "background-color 0.12s ease, transform 0.1s ease",
+                fontFamily: "inherit",
               }}
-              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
+              onMouseDown={(e) => { if (!uploading) e.currentTarget.style.transform = "scale(0.97)"; }}
               onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
               onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
             >
               Cancel
             </button>
             <button
-              disabled={staged.length === 0}
+              onClick={handleUpload}
+              disabled={staged.length === 0 || uploading}
               style={{
-                height: "40px",
-                padding: "0 18px",
-                background: staged.length === 0 ? "var(--airbnb-rausch-disabled)" : "var(--airbnb-rausch)",
+                height: "40px", padding: "0 18px",
+                background: staged.length === 0 || uploading ? "var(--airbnb-rausch-disabled)" : "var(--airbnb-rausch)",
                 border: "none",
                 borderRadius: "var(--radius-sm)",
-                fontSize: "14px",
-                fontWeight: 500,
-                color: "white",
-                cursor: staged.length === 0 ? "not-allowed" : "pointer",
+                fontSize: "14px", fontWeight: 500, color: "white",
+                cursor: staged.length === 0 || uploading ? "not-allowed" : "pointer",
                 transition: "background-color 0.12s ease, transform 0.1s ease",
+                fontFamily: "inherit",
+                minWidth: "100px",
               }}
-              onMouseDown={(e) => {
-                if (staged.length > 0) e.currentTarget.style.transform = "scale(0.97)";
-              }}
+              onMouseDown={(e) => { if (staged.length > 0 && !uploading) e.currentTarget.style.transform = "scale(0.97)"; }}
               onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
               onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
             >
-              Upload {staged.length > 0 ? `${staged.length} file${staged.length > 1 ? "s" : ""}` : "files"}
+              {uploading ? "Uploading…" : `Upload ${staged.length > 0 ? `${staged.length} file${staged.length > 1 ? "s" : ""}` : "files"}`}
             </button>
           </div>
         </div>
