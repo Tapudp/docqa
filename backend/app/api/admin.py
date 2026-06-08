@@ -261,6 +261,70 @@ async def set_user_active(
     return _user_out(target)
 
 
+# ── Per-workspace LLM config ──────────────────────────────────
+
+@router.get("/workspaces/{workspace_id}/llm", response_model=LLMConfigOut)
+async def get_workspace_llm_config(
+    workspace_id: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    ws = await db.get(Workspace, _uuid.UUID(workspace_id))
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    cfg = ws.llm_config or {}
+    return LLMConfigOut(
+        provider=cfg.get("provider", ""),
+        base_url=cfg.get("base_url", ""),
+        model=cfg.get("model", ""),
+        api_key=_mask_key(cfg.get("api_key", "")),
+    )
+
+
+@router.patch("/workspaces/{workspace_id}/llm", response_model=LLMConfigOut)
+async def update_workspace_llm_config(
+    workspace_id: str,
+    body: LLMConfigIn,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    ws = await db.get(Workspace, _uuid.UUID(workspace_id))
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    existing_key = (ws.llm_config or {}).get("api_key", "")
+    api_key = existing_key if (body.api_key and "•" in body.api_key) else body.api_key
+
+    ws.llm_config = {
+        "provider": body.provider,
+        "base_url": body.base_url,
+        "model": body.model,
+        "api_key": api_key,
+    }
+    await db.commit()
+    await db.refresh(ws)
+    cfg = ws.llm_config
+    return LLMConfigOut(
+        provider=cfg["provider"],
+        base_url=cfg["base_url"],
+        model=cfg["model"],
+        api_key=_mask_key(cfg.get("api_key", "")),
+    )
+
+
+@router.delete("/workspaces/{workspace_id}/llm", status_code=204)
+async def clear_workspace_llm_config(
+    workspace_id: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    ws = await db.get(Workspace, _uuid.UUID(workspace_id))
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    ws.llm_config = {}
+    await db.commit()
+
+
 # ── Workspace membership ───────────────────────────────────────
 
 class MemberOut(BaseModel):

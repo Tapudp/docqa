@@ -9,6 +9,7 @@ interface Props {
   doc: ApiDocument;
   selected?: boolean;
   onClick?: () => void;
+  canDelete?: boolean;
 }
 
 type CoverageMeta = {
@@ -51,7 +52,7 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-export default function DocumentCard({ doc, selected, onClick }: Props) {
+export default function DocumentCard({ doc, selected, onClick, canDelete = true }: Props) {
   const removeApiDocument = useStore((s) => s.removeApiDocument);
   const [hovered, setHovered] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -154,8 +155,8 @@ export default function DocumentCard({ doc, selected, onClick }: Props) {
         </div>
       </button>
 
-      {/* Delete button — appears on hover */}
-      {hovered && (
+      {/* Delete button — appears on hover for members and admins */}
+      {hovered && canDelete && (
         <button
           onClick={handleDelete}
           disabled={deleting}

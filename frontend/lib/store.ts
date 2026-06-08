@@ -27,6 +27,7 @@ interface DocQAStore {
   conversations: ApiConversation[];
   setConversations: (convs: ApiConversation[]) => void;
   addConversation: (conv: ApiConversation) => void;
+  removeConversation: (id: string) => void;
   activeConversationId: string | null;
   setActiveConversationId: (id: string | null) => void;
 
@@ -110,6 +111,7 @@ export const useStore = create<DocQAStore>((set) => ({
   conversations: [],
   setConversations: (convs) => set({ conversations: convs }),
   addConversation: (conv) => set((s) => ({ conversations: [conv, ...s.conversations] })),
+  removeConversation: (id) => set((s) => ({ conversations: s.conversations.filter((c) => c.id !== id) })),
   activeConversationId: null,
   setActiveConversationId: (id) => set({ activeConversationId: id }),
 

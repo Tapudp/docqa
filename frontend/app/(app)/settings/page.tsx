@@ -360,6 +360,15 @@ function WorkspaceRow({ workspace, expanded, onToggle }: { workspace: ApiWorkspa
   const [addRole, setAddRole] = useState("member");
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"members" | "llm">("members");
+
+  // Per-workspace LLM override state
+  const [llmCfg, setLlmCfg] = useState<LLMConfig | null>(null);
+  const [llmLoading, setLlmLoading] = useState(false);
+  const [llmSaving, setLlmSaving] = useState(false);
+  const [llmSaved, setLlmSaved] = useState(false);
+  const [llmError, setLlmError] = useState<string | null>(null);
+  const [llmModels, setLlmModels] = useState<OllamaModel[]>([]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -372,6 +381,50 @@ function WorkspaceRow({ workspace, expanded, onToggle }: { workspace: ApiWorkspa
       setAllUsers(users);
     }).finally(() => setLoading(false));
   }, [expanded, workspace.id]);
+
+  useEffect(() => {
+    if (!expanded || activeTab !== "llm" || llmCfg !== null) return;
+    setLlmLoading(true);
+    api.admin.getWorkspaceLLMConfig(workspace.id)
+      .then(setLlmCfg)
+      .catch(() => setLlmCfg({ provider: "ollama", base_url: "", model: "", api_key: "" }))
+      .finally(() => setLlmLoading(false));
+  }, [expanded, activeTab, workspace.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (llmCfg?.provider === "ollama" && llmCfg.base_url) {
+      api.admin.listOllamaModels().then(setLlmModels).catch(() => {});
+    }
+  }, [llmCfg?.provider, llmCfg?.base_url]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleLlmSave() {
+    if (!llmCfg) return;
+    setLlmSaving(true);
+    setLlmError(null);
+    try {
+      setLlmCfg(await api.admin.updateWorkspaceLLMConfig(workspace.id, llmCfg));
+      setLlmSaved(true);
+      setTimeout(() => setLlmSaved(false), 2500);
+    } catch (e) {
+      setLlmError(e instanceof ApiError ? e.message : "Save failed");
+    } finally {
+      setLlmSaving(false);
+    }
+  }
+
+  async function handleLlmClear() {
+    setLlmSaving(true);
+    try {
+      await api.admin.clearWorkspaceLLMConfig(workspace.id);
+      setLlmCfg({ provider: "", base_url: "", model: "", api_key: "" });
+      setLlmSaved(true);
+      setTimeout(() => setLlmSaved(false), 2500);
+    } catch (e) {
+      setLlmError(e instanceof ApiError ? e.message : "Clear failed");
+    } finally {
+      setLlmSaving(false);
+    }
+  }
 
   const nonMembers = allUsers.filter((u) => !members.find((m) => m.user_id === u.id));
 
@@ -420,76 +473,142 @@ function WorkspaceRow({ workspace, expanded, onToggle }: { workspace: ApiWorkspa
       </button>
 
       {expanded && (
-        <div style={{ padding: "12px 16px 16px", borderTop: "1px solid var(--airbnb-hairline)", background: "var(--airbnb-canvas)" }}>
-          {loading ? (
-            <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: 0 }}>Loading…</p>
-          ) : (
-            <>
-              {members.length > 0 && (
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", marginBottom: "12px" }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid var(--airbnb-hairline)" }}>
-                      <Th>Member</Th>
-                      <Th>Role</Th>
-                      <Th></Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {members.map((m, i) => (
-                      <tr key={m.user_id} style={{ borderTop: i > 0 ? "1px solid var(--airbnb-hairline-soft)" : "none" }}>
-                        <td style={{ padding: "8px 0" }}>
-                          <p style={{ margin: 0, fontWeight: 500, color: "var(--airbnb-ink)" }}>{m.display_name ?? m.email}</p>
-                          {m.display_name && <p style={{ margin: 0, fontSize: "11px", color: "var(--airbnb-muted)" }}>{m.email}</p>}
-                        </td>
-                        <td style={{ padding: "8px 8px" }}>
-                          <select value={m.role} onChange={(e) => handleRoleChange(m.user_id, e.target.value)}
-                            style={{ ...selectStyle, padding: "3px 6px", fontSize: "12px", width: "auto" }}>
-                            <option value="admin">admin</option>
-                            <option value="member">member</option>
-                            <option value="viewer">viewer</option>
-                          </select>
-                        </td>
-                        <td style={{ padding: "8px 0", textAlign: "right" }}>
-                          <button onClick={() => handleRemove(m.user_id)}
-                            style={{ ...ghostBtnStyle, height: "28px", padding: "0 10px", fontSize: "12px", color: "#ef4444", borderColor: "#fca5a5" }}>
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+        <div style={{ borderTop: "1px solid var(--airbnb-hairline)", background: "var(--airbnb-canvas)" }}>
+          {/* Sub-tabs */}
+          <div style={{ display: "flex", borderBottom: "1px solid var(--airbnb-hairline)", background: "var(--airbnb-surface-soft)" }}>
+            {(["members", "llm"] as const).map((tab) => (
+              <button key={tab} onClick={() => setActiveTab(tab)} style={{
+                padding: "8px 16px", fontSize: "12px", fontWeight: activeTab === tab ? 600 : 400,
+                color: activeTab === tab ? "var(--airbnb-ink)" : "var(--airbnb-muted)",
+                background: "transparent", border: "none",
+                borderBottom: activeTab === tab ? "2px solid var(--airbnb-ink)" : "2px solid transparent",
+                cursor: "pointer", fontFamily: "inherit",
+              }}>
+                {tab === "members" ? "Members" : "LLM Override"}
+              </button>
+            ))}
+          </div>
 
-              {nonMembers.length > 0 && (
-                <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-                  <select value={addUserId} onChange={(e) => setAddUserId(e.target.value)}
-                    style={{ ...selectStyle, flex: 1, minWidth: "160px" }}>
-                    <option value="">Select user to add…</option>
-                    {nonMembers.map((u) => (
-                      <option key={u.id} value={u.id}>{u.display_name ?? u.email}</option>
-                    ))}
-                  </select>
-                  <select value={addRole} onChange={(e) => setAddRole(e.target.value)}
-                    style={{ ...selectStyle, width: "110px" }}>
-                    <option value="viewer">viewer</option>
-                    <option value="member">member</option>
-                    <option value="admin">admin</option>
-                  </select>
-                  <button onClick={handleAdd} disabled={!addUserId || adding} style={primaryBtnStyle}>
-                    {adding ? "Adding…" : "Add"}
-                  </button>
+          <div style={{ padding: "12px 16px 16px" }}>
+            {activeTab === "members" && (
+              loading ? (
+                <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: 0 }}>Loading…</p>
+              ) : (
+                <>
+                  {members.length > 0 && (
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", marginBottom: "12px" }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid var(--airbnb-hairline)" }}>
+                          <Th>Member</Th>
+                          <Th>Role</Th>
+                          <Th></Th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {members.map((m, i) => (
+                          <tr key={m.user_id} style={{ borderTop: i > 0 ? "1px solid var(--airbnb-hairline-soft)" : "none" }}>
+                            <td style={{ padding: "8px 0" }}>
+                              <p style={{ margin: 0, fontWeight: 500, color: "var(--airbnb-ink)" }}>{m.display_name ?? m.email}</p>
+                              {m.display_name && <p style={{ margin: 0, fontSize: "11px", color: "var(--airbnb-muted)" }}>{m.email}</p>}
+                            </td>
+                            <td style={{ padding: "8px 8px" }}>
+                              <select value={m.role} onChange={(e) => handleRoleChange(m.user_id, e.target.value)}
+                                style={{ ...selectStyle, padding: "3px 6px", fontSize: "12px", width: "auto" }}>
+                                <option value="admin">admin</option>
+                                <option value="member">member</option>
+                                <option value="viewer">viewer</option>
+                              </select>
+                            </td>
+                            <td style={{ padding: "8px 0", textAlign: "right" }}>
+                              <button onClick={() => handleRemove(m.user_id)}
+                                style={{ ...ghostBtnStyle, height: "28px", padding: "0 10px", fontSize: "12px", color: "#ef4444", borderColor: "#fca5a5" }}>
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+
+                  {nonMembers.length > 0 && (
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                      <select value={addUserId} onChange={(e) => setAddUserId(e.target.value)}
+                        style={{ ...selectStyle, flex: 1, minWidth: "160px" }}>
+                        <option value="">Select user to add…</option>
+                        {nonMembers.map((u) => (
+                          <option key={u.id} value={u.id}>{u.display_name ?? u.email}</option>
+                        ))}
+                      </select>
+                      <select value={addRole} onChange={(e) => setAddRole(e.target.value)}
+                        style={{ ...selectStyle, width: "110px" }}>
+                        <option value="viewer">viewer</option>
+                        <option value="member">member</option>
+                        <option value="admin">admin</option>
+                      </select>
+                      <button onClick={handleAdd} disabled={!addUserId || adding} style={primaryBtnStyle}>
+                        {adding ? "Adding…" : "Add"}
+                      </button>
+                    </div>
+                  )}
+                  {addError && <p style={{ fontSize: "12px", color: "#ef4444", marginTop: "6px", marginBottom: 0 }}>{addError}</p>}
+                  {nonMembers.length === 0 && members.length > 0 && (
+                    <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: 0 }}>All users are already members of this workspace.</p>
+                  )}
+                  {members.length === 0 && nonMembers.length === 0 && (
+                    <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: 0 }}>No users yet. Create users in the Users section above.</p>
+                  )}
+                </>
+              )
+            )}
+
+            {activeTab === "llm" && (
+              llmLoading ? (
+                <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: 0 }}>Loading…</p>
+              ) : llmCfg ? (
+                <div style={{ display: "grid", gap: "14px", maxWidth: "420px" }}>
+                  <p style={{ margin: 0, fontSize: "12px", color: "var(--airbnb-muted)", lineHeight: 1.5 }}>
+                    Override the global LLM for this workspace. Leave all fields empty to use the global config.
+                  </p>
+                  <Field label="Provider">
+                    <select value={llmCfg.provider} onChange={(e) => setLlmCfg({ ...llmCfg, provider: e.target.value })} style={selectStyle}>
+                      <option value="">— use global —</option>
+                      {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
+                  </Field>
+                  {llmCfg.provider && (
+                    <>
+                      <Field label="Base URL">
+                        <input value={llmCfg.base_url} onChange={(e) => setLlmCfg({ ...llmCfg, base_url: e.target.value })} style={inputStyle} placeholder="http://host.docker.internal:11434" />
+                      </Field>
+                      <Field label="Model">
+                        {llmCfg.provider === "ollama" && llmModels.length > 0
+                          ? <select value={llmCfg.model} onChange={(e) => setLlmCfg({ ...llmCfg, model: e.target.value })} style={selectStyle}>
+                              {llmModels.map((m) => <option key={m.name} value={m.name}>{m.name}{m.parameter_size ? ` (${m.parameter_size})` : ""}</option>)}
+                            </select>
+                          : <input value={llmCfg.model} onChange={(e) => setLlmCfg({ ...llmCfg, model: e.target.value })} style={inputStyle} placeholder="llama3.2" />
+                        }
+                      </Field>
+                      {llmCfg.provider !== "ollama" && (
+                        <Field label="API Key">
+                          <input type="password" value={llmCfg.api_key} onChange={(e) => setLlmCfg({ ...llmCfg, api_key: e.target.value })} style={inputStyle} placeholder="sk-…" autoComplete="new-password" />
+                        </Field>
+                      )}
+                    </>
+                  )}
+                  {llmError && <p style={{ fontSize: "12px", color: "#ef4444", margin: 0 }}>{llmError}</p>}
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button onClick={handleLlmSave} disabled={llmSaving} style={primaryBtnStyle}>
+                      {llmSaving ? "Saving…" : llmSaved ? "✓ Saved" : "Save override"}
+                    </button>
+                    <button onClick={handleLlmClear} disabled={llmSaving} style={ghostBtnStyle}>
+                      Clear override
+                    </button>
+                  </div>
                 </div>
-              )}
-              {addError && <p style={{ fontSize: "12px", color: "#ef4444", marginTop: "6px", marginBottom: 0 }}>{addError}</p>}
-              {nonMembers.length === 0 && members.length > 0 && (
-                <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: 0 }}>All users are already members of this workspace.</p>
-              )}
-              {members.length === 0 && nonMembers.length === 0 && (
-                <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: 0 }}>No users yet. Create users in the Users section above.</p>
-              )}
-            </>
-          )}
+              ) : null
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -1,24 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useStore } from "@/lib/store";
+import { api } from "@/lib/api";
 
 export default function Sidebar() {
   const {
     apiWorkspaces, activeWorkspaceId, setActiveWorkspaceId,
     currentUser,
-    conversations,
+    conversations, removeConversation,
     activeConversationId, setActiveConversationId,
     setMessages, clearStreaming, setIsStreaming,
   } = useStore();
   const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
-  const pathname = usePathname();
+  const [hoveredConvId, setHoveredConvId] = useState<string | null>(null);
+  const [deletingConvId, setDeletingConvId] = useState<string | null>(null);
+  const [confirmConv, setConfirmConv] = useState<{ id: string; title: string } | null>(null);
 
   const activeWorkspace = apiWorkspaces.find((w) => w.id === activeWorkspaceId);
   const isAdmin = currentUser?.role === "admin";
-  const isSettings = pathname?.startsWith("/settings");
 
   async function handleNewConversation() {
     if (!activeWorkspaceId) return;
@@ -35,6 +35,29 @@ export default function Sidebar() {
     setActiveConversationId(id);
   }
 
+  function handleDeleteClick(e: { stopPropagation(): void }, conv: { id: string; title: string | null }) {
+    e.stopPropagation();
+    setConfirmConv({ id: conv.id, title: conv.title ?? "Untitled conversation" });
+  }
+
+  async function confirmDelete() {
+    if (!confirmConv || deletingConvId) return;
+    const { id } = confirmConv;
+    setDeletingConvId(id);
+    setConfirmConv(null);
+    try {
+      await api.chat.deleteConversation(id);
+      removeConversation(id);
+      if (activeConversationId === id) {
+        setActiveConversationId(null);
+        setMessages([]);
+        clearStreaming();
+      }
+    } finally {
+      setDeletingConvId(null);
+    }
+  }
+
   function formatDate(iso: string) {
     const d = new Date(iso);
     const now = new Date();
@@ -46,6 +69,7 @@ export default function Sidebar() {
   }
 
   return (
+    <>
     <aside
       style={{
         width: "260px",
@@ -173,74 +197,196 @@ export default function Sidebar() {
           )}
           {conversations.map((conv) => {
             const isActive = conv.id === activeConversationId;
+            const isHovered = hoveredConvId === conv.id;
+            const isDeleting = deletingConvId === conv.id;
             return (
-              <button
+              <div
                 key={conv.id}
-                onClick={() => handleSelectConversation(conv.id)}
-                style={{
-                  width: "100%",
-                  padding: "9px 10px 9px 13px",
-                  borderRadius: "var(--radius-sm)",
-                  background: isActive ? "var(--airbnb-canvas)" : "transparent",
-                  border: isActive ? "1px solid var(--airbnb-hairline)" : "1px solid transparent",
-                  boxShadow: isActive ? "0 1px 3px rgba(0,0,0,0.05)" : "none",
-                  cursor: "pointer",
-                  textAlign: "left",
-                  transition: "background-color 0.1s ease, border-color 0.1s ease",
-                  position: "relative",
-                  fontFamily: "inherit",
-                }}
+                style={{ position: "relative" }}
+                onMouseEnter={() => setHoveredConvId(conv.id)}
+                onMouseLeave={() => setHoveredConvId(null)}
               >
-                {isActive && (
-                  <div style={{ position: "absolute", left: 0, top: "8px", bottom: "8px", width: "3px", borderRadius: "0 2px 2px 0", background: "var(--airbnb-rausch)" }} />
+                <button
+                  onClick={() => handleSelectConversation(conv.id)}
+                  style={{
+                    width: "100%",
+                    padding: "9px 10px 9px 13px",
+                    paddingRight: isAdmin && isHovered ? "36px" : "10px",
+                    borderRadius: "var(--radius-sm)",
+                    background: isActive ? "var(--airbnb-canvas)" : "transparent",
+                    border: isActive ? "1px solid var(--airbnb-hairline)" : "1px solid transparent",
+                    boxShadow: isActive ? "0 1px 3px rgba(0,0,0,0.05)" : "none",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    transition: "background-color 0.1s ease, border-color 0.1s ease, padding-right 0.1s ease",
+                    position: "relative",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {isActive && (
+                    <div style={{ position: "absolute", left: 0, top: "8px", bottom: "8px", width: "3px", borderRadius: "0 2px 2px 0", background: "var(--airbnb-rausch)" }} />
+                  )}
+                  <p style={{ fontSize: "13px", fontWeight: isActive ? 600 : 400, color: isActive ? "var(--airbnb-ink)" : "var(--airbnb-body)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", margin: 0, lineHeight: 1.35 }}>
+                    {conv.title ?? "Untitled conversation"}
+                  </p>
+                  <span style={{ fontSize: "11px", color: "var(--airbnb-muted)", marginTop: "3px", display: "block" }}>
+                    {formatDate(conv.created_at)}
+                  </span>
+                </button>
+
+                {isAdmin && isHovered && (
+                  <button
+                    onClick={(e) => handleDeleteClick(e, conv)}
+                    disabled={isDeleting}
+                    title="Delete conversation"
+                    style={{
+                      position: "absolute",
+                      top: "50%",
+                      right: "8px",
+                      transform: "translateY(-50%)",
+                      width: "22px",
+                      height: "22px",
+                      borderRadius: "5px",
+                      background: isDeleting ? "var(--airbnb-surface-soft)" : "var(--airbnb-canvas)",
+                      border: "1px solid var(--airbnb-hairline)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: isDeleting ? "not-allowed" : "pointer",
+                      padding: 0,
+                      zIndex: 1,
+                      transition: "background-color 0.1s ease",
+                    }}
+                    onMouseEnter={(e) => { if (!isDeleting) { e.currentTarget.style.background = "#fee2e2"; e.currentTarget.style.borderColor = "#fca5a5"; } }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "var(--airbnb-canvas)"; e.currentTarget.style.borderColor = "var(--airbnb-hairline)"; }}
+                  >
+                    {isDeleting ? (
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ animation: "spin 0.8s linear infinite" }}>
+                        <circle cx="5" cy="5" r="3.5" stroke="#aaa" strokeWidth="1.5" strokeDasharray="5 4" />
+                      </svg>
+                    ) : (
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                        <path d="M1.5 1.5l7 7M8.5 1.5l-7 7" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                    )}
+                  </button>
                 )}
-                <p style={{ fontSize: "13px", fontWeight: isActive ? 600 : 400, color: isActive ? "var(--airbnb-ink)" : "var(--airbnb-body)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", margin: 0, lineHeight: 1.35 }}>
-                  {conv.title ?? "Untitled conversation"}
-                </p>
-                <span style={{ fontSize: "11px", color: "var(--airbnb-muted)", marginTop: "3px", display: "block" }}>
-                  {formatDate(conv.created_at)}
-                </span>
-              </button>
+              </div>
             );
           })}
         </div>
       </div>
 
-      {/* Bottom bar: model status + admin settings link */}
-      <div style={{ padding: "10px 12px 14px", borderTop: "1px solid var(--airbnb-hairline)", display: "flex", flexDirection: "column", gap: "8px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-          <div style={{ width: "5px", height: "5px", borderRadius: "50%", background: "#22c55e", flexShrink: 0 }} />
-          <span style={{ fontSize: "11px", color: "var(--airbnb-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {currentUser?.display_name ?? currentUser?.email ?? "…"}
-            {isAdmin && <span style={{ marginLeft: "5px", fontSize: "10px", fontWeight: 600, background: "rgba(255,56,92,0.1)", color: "var(--airbnb-rausch)", borderRadius: "3px", padding: "1px 5px" }}>admin</span>}
+      {/* Bottom bar: signed-in user */}
+      <div style={{ padding: "12px 14px", borderTop: "1px solid var(--airbnb-hairline)", display: "flex", alignItems: "center", gap: "8px" }}>
+        <div style={{ width: "28px", height: "28px", borderRadius: "var(--radius-full)", background: "var(--airbnb-rausch)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <span style={{ fontSize: "11px", fontWeight: 700, color: "white" }}>
+            {(currentUser?.display_name ?? currentUser?.email ?? "?")[0].toUpperCase()}
           </span>
         </div>
-
-        {isAdmin && (
-          <Link
-            href="/settings"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "7px",
-              padding: "8px 10px",
-              borderRadius: "var(--radius-sm)",
-              background: isSettings ? "var(--airbnb-canvas)" : "transparent",
-              border: isSettings ? "1px solid var(--airbnb-hairline)" : "1px solid transparent",
-              textDecoration: "none",
-              transition: "background-color 0.1s ease, border-color 0.1s ease",
-            }}
-          >
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-              <circle cx="6.5" cy="6.5" r="2" stroke={isSettings ? "var(--airbnb-rausch)" : "var(--airbnb-muted)"} strokeWidth="1.2" />
-              <path d="M6.5 1v1.2M6.5 10.8V12M1 6.5h1.2M10.8 6.5H12M2.64 2.64l.85.85M9.51 9.51l.85.85M9.51 3.49l-.85.85M3.49 9.51l-.85.85" stroke={isSettings ? "var(--airbnb-rausch)" : "var(--airbnb-muted)"} strokeWidth="1.2" strokeLinecap="round" />
-            </svg>
-            <span style={{ fontSize: "12px", fontWeight: isSettings ? 600 : 400, color: isSettings ? "var(--airbnb-rausch)" : "var(--airbnb-muted)" }}>
-              Settings
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: "12px", fontWeight: 600, color: "var(--airbnb-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {currentUser?.display_name ?? currentUser?.email ?? "…"}
+          </p>
+          {isAdmin && (
+            <span style={{ fontSize: "10px", fontWeight: 600, background: "rgba(255,56,92,0.1)", color: "var(--airbnb-rausch)", borderRadius: "3px", padding: "1px 5px" }}>
+              admin
             </span>
-          </Link>
-        )}
+          )}
+        </div>
       </div>
+      <style>{`@keyframes spin { to { transform: translateY(-50%) rotate(360deg); } }`}</style>
     </aside>
+
+    {/* Delete confirmation modal */}
+    {confirmConv && (
+      <>
+        {/* Backdrop */}
+        <div
+          onClick={() => setConfirmConv(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            zIndex: 100,
+            backdropFilter: "blur(2px)",
+          }}
+        />
+        {/* Dialog */}
+        <div
+          style={{
+            position: "fixed",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 101,
+            background: "var(--airbnb-canvas)",
+            borderRadius: "var(--radius-md)",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.10)",
+            padding: "28px 28px 24px",
+            width: "360px",
+            maxWidth: "calc(100vw - 32px)",
+          }}
+        >
+          {/* Icon */}
+          <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: "#fee2e2", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "16px" }}>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M2 4.5h14M6.5 4.5V3a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5v1.5M14 4.5l-.9 9.6a1 1 0 0 1-1 .9H5.9a1 1 0 0 1-1-.9L4 4.5" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+
+          <p style={{ fontSize: "15px", fontWeight: 700, color: "var(--airbnb-ink)", margin: "0 0 8px" }}>
+            Delete conversation?
+          </p>
+          <p style={{ fontSize: "13px", color: "var(--airbnb-body)", margin: "0 0 24px", lineHeight: 1.55 }}>
+            &ldquo;{confirmConv.title}&rdquo; and all its messages will be permanently deleted. This cannot be undone.
+          </p>
+
+          <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+            <button
+              onClick={() => setConfirmConv(null)}
+              style={{
+                height: "36px",
+                padding: "0 16px",
+                background: "transparent",
+                border: "1px solid var(--airbnb-hairline)",
+                borderRadius: "var(--radius-sm)",
+                fontSize: "13px",
+                color: "var(--airbnb-body)",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--airbnb-surface-soft)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmDelete}
+              style={{
+                height: "36px",
+                padding: "0 16px",
+                background: "#ef4444",
+                border: "none",
+                borderRadius: "var(--radius-sm)",
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "white",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                transition: "background-color 0.12s ease, transform 0.1s ease",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#dc2626")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "#ef4444")}
+              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
+              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+            >
+              Yes, delete
+            </button>
+          </div>
+        </div>
+      </>
+    )}
+    </>
   );
 }

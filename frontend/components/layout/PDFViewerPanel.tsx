@@ -24,6 +24,8 @@ export default function RightPanel() {
   } = useStore();
 
   const activeWorkspace = apiWorkspaces.find((w) => w.id === activeWorkspaceId);
+  const memberRole = activeWorkspace?.member_role ?? "viewer";
+  const canWrite = memberRole === "member" || memberRole === "admin";
 
   // Use real docs when available, fall back to empty (mock chat still works)
   const docs = apiDocuments;
@@ -104,33 +106,35 @@ export default function RightPanel() {
                 {docs.length} total
               </p>
             </div>
-            <button
-              onClick={() => setUploadOpen(true)}
-              style={{
-                height: "32px",
-                padding: "0 12px",
-                background: "var(--airbnb-rausch)",
-                border: "none",
-                borderRadius: "var(--radius-sm)",
-                fontSize: "12px",
-                fontWeight: 500,
-                color: "white",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "5px",
-                transition: "background-color 0.12s ease, transform 0.1s ease",
-                flexShrink: 0,
-              }}
-              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
-              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
-              onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
-            >
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                <path d="M5.5 1v9M1 5.5h9" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-              Upload
-            </button>
+            {canWrite && (
+              <button
+                onClick={() => setUploadOpen(true)}
+                style={{
+                  height: "32px",
+                  padding: "0 12px",
+                  background: "var(--airbnb-rausch)",
+                  border: "none",
+                  borderRadius: "var(--radius-sm)",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  color: "white",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  transition: "background-color 0.12s ease, transform 0.1s ease",
+                  flexShrink: 0,
+                }}
+                onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
+                onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+              >
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                  <path d="M5.5 1v9M1 5.5h9" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
+                Upload
+              </button>
+            )}
           </div>
 
           {/* Coverage summary bar */}
@@ -154,6 +158,7 @@ export default function RightPanel() {
                   <DocumentCard
                     key={doc.id}
                     doc={doc}
+                    canDelete={canWrite}
                     onClick={() => {
                       if (doc.status === "ready") openPdf(doc.id, 1);
                     }}

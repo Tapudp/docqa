@@ -29,19 +29,27 @@ ALLOWED_MIME_TYPES = {
 MAX_FILE_SIZE = 200 * 1024 * 1024  # 200 MB
 
 
-async def _require_workspace_member(
+_ROLE_RANK: dict[str, int] = {"viewer": 0, "member": 1, "admin": 2}
+
+
+async def _require_workspace_role(
     workspace_id: uuid.UUID,
     current_user: User,
     db: AsyncSession,
-) -> None:
+    min_role: str = "viewer",
+) -> str:
     result = await db.execute(
         select(WorkspaceMember).where(
             WorkspaceMember.workspace_id == workspace_id,
             WorkspaceMember.user_id == current_user.id,
         )
     )
-    if not result.scalar_one_or_none():
+    membership = result.scalar_one_or_none()
+    if not membership:
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
+    if _ROLE_RANK.get(membership.role, 0) < _ROLE_RANK.get(min_role, 0):
+        raise HTTPException(status_code=403, detail=f"Requires {min_role} role or higher")
+    return membership.role
 
 
 @router.post(
@@ -55,7 +63,7 @@ async def upload_document(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _require_workspace_member(workspace_id, current_user, db)
+    await _require_workspace_role(workspace_id, current_user, db, min_role="member")
 
     content_type = file.content_type or "application/octet-stream"
     if content_type not in ALLOWED_MIME_TYPES:
@@ -99,7 +107,7 @@ async def list_documents(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _require_workspace_member(workspace_id, current_user, db)
+    await _require_workspace_role(workspace_id, current_user, db, min_role="viewer")
 
     result = await db.execute(
         select(Document)
@@ -120,7 +128,7 @@ async def get_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    await _require_workspace_member(doc.workspace_id, current_user, db)
+    await _require_workspace_role(doc.workspace_id, current_user, db)
     return doc
 
 
@@ -135,7 +143,7 @@ async def get_document_file(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    await _require_workspace_member(doc.workspace_id, current_user, db)
+    await _require_workspace_role(doc.workspace_id, current_user, db)
 
     data = await minio_client.download_object(doc.storage_key)
     return Response(
@@ -156,7 +164,7 @@ async def delete_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    await _require_workspace_member(doc.workspace_id, current_user, db)
+    await _require_workspace_role(doc.workspace_id, current_user, db, min_role="member")
 
     # Delete from MinIO — ignore if already gone
     try:

@@ -132,6 +132,21 @@ async def list_messages(
     ]
 
 
+@router.delete("/conversations/{conversation_id}", status_code=204)
+async def delete_conversation(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    conv = await db.get(Conversation, uuid.UUID(conversation_id))
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if user.role != "admin" and str(conv.created_by) != str(user.id):
+        raise HTTPException(status_code=403, detail="Not authorized to delete this conversation")
+    await db.delete(conv)
+    await db.commit()
+
+
 @router.post("/conversations/{conversation_id}/chat")
 async def chat(
     conversation_id: str,
@@ -157,9 +172,13 @@ async def chat(
         conv.title = body.question[:80]
         await db.commit()
 
-    # Load LLM config from DB (falls back to .env if not set)
-    cfg_row = await db.get(SystemConfig, "llm")
-    llm_config: LLMConfig = cfg_row.value if cfg_row else {}
+    # Per-workspace LLM config overrides global system config
+    ws = await db.get(Workspace, conv.workspace_id)
+    if ws and ws.llm_config:
+        llm_config: LLMConfig = ws.llm_config
+    else:
+        cfg_row = await db.get(SystemConfig, "llm")
+        llm_config: LLMConfig = cfg_row.value if cfg_row else {}
 
     # Retrieve relevant chunks
     hits = await hybrid_search(db, conv.workspace_id, body.question)

@@ -113,6 +113,9 @@ export const api = {
       throw new Error("use streamChatFetch instead");
     },
 
+    deleteConversation: (conversationId: string) =>
+      request<void>(`/api/conversations/${conversationId}`, { method: "DELETE" }),
+
     streamChatFetch: async (
       conversationId: string,
       question: string,
@@ -208,6 +211,18 @@ export const api = {
       request<void>(`/api/admin/workspaces/${workspaceId}/members/${userId}`, {
         method: "DELETE",
       }),
+
+    getWorkspaceLLMConfig: (workspaceId: string) =>
+      request<LLMConfig>(`/api/admin/workspaces/${workspaceId}/llm`),
+
+    updateWorkspaceLLMConfig: (workspaceId: string, cfg: Omit<LLMConfig, "api_key"> & { api_key: string }) =>
+      request<LLMConfig>(`/api/admin/workspaces/${workspaceId}/llm`, {
+        method: "PATCH",
+        body: JSON.stringify(cfg),
+      }),
+
+    clearWorkspaceLLMConfig: (workspaceId: string) =>
+      request<void>(`/api/admin/workspaces/${workspaceId}/llm`, { method: "DELETE" }),
   },
 };
 

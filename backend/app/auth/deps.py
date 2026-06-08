@@ -8,6 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.jwt import decode_token
 from app.database import get_db
 from app.models.user import User
+from app.models.workspace import WorkspaceMember
+
+ROLE_RANK: dict[str, int] = {"viewer": 0, "member": 1, "admin": 2}
 
 _bearer = HTTPBearer()
 
@@ -43,3 +46,31 @@ async def require_admin(current_user: User = Depends(get_current_user)) -> User:
             detail="Admin access required",
         )
     return current_user
+
+
+def require_workspace_role(min_role: str):
+    """Factory dep: checks the caller has at least min_role in the workspace_id path param."""
+    async def _dep(
+        workspace_id: uuid.UUID,
+        current_user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ) -> tuple[User, str]:
+        result = await db.execute(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.user_id == current_user.id,
+            )
+        )
+        membership = result.scalar_one_or_none()
+        if not membership:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not a member of this workspace",
+            )
+        if ROLE_RANK.get(membership.role, 0) < ROLE_RANK.get(min_role, 0):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires {min_role} role or higher",
+            )
+        return current_user, membership.role
+    return _dep

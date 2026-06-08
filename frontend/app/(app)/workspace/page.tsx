@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useStore } from "@/lib/store";
 import { api } from "@/lib/api";
 import type { ApiMessage, Citation } from "@/lib/types";
@@ -278,6 +279,22 @@ export default function WorkspacePage() {
                     <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--airbnb-ink)", margin: 0 }}>{displayName}</p>
                     <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: "2px 0 0" }}>{currentUser?.email}</p>
                   </div>
+                  {currentUser?.role === "admin" && (
+                    <Link
+                      href="/settings"
+                      onClick={() => setUserMenuOpen(false)}
+                      style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", padding: "10px 14px", textDecoration: "none", fontSize: "14px", color: "var(--airbnb-body)", background: "none" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--airbnb-surface-soft)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                        <circle cx="6.5" cy="6.5" r="2" stroke="currentColor" strokeWidth="1.2" />
+                        <path d="M6.5 1v1.2M6.5 10.8V12M1 6.5h1.2M10.8 6.5H12M2.64 2.64l.85.85M9.51 9.51l.85.85M9.51 3.49l-.85.85M3.49 9.51l-.85.85" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                      </svg>
+                      Settings
+                    </Link>
+                  )}
+                  <div style={{ height: "1px", background: "var(--airbnb-hairline)" }} />
                   <button
                     onClick={handleLogout}
                     style={{ width: "100%", padding: "10px 14px", textAlign: "left", fontSize: "14px", color: "var(--airbnb-error)", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}
