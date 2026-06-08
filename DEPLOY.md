@@ -13,8 +13,11 @@ Deploy the full stack on any Linux server (or your local Mac) with Docker and Ol
 | `minio` | Object storage (PDFs) | 9000 / 9001 |
 | `redis` | Celery task queue | 6379 |
 | `celery-worker` | Background parser + indexer | — |
-| `frontend` | Next.js app (dev server) | 3000 |
-| Ollama | LLM inference (runs on host, not in Docker) | 11434 |
+| `adminer` *(optional)* | DB browser — start with `--profile tools` | 8080 |
+| Next.js frontend | Runs **outside** Docker — `npm run dev` | 3000 |
+| Ollama | LLM inference — runs on **host**, not in Docker | 11434 |
+
+> The frontend is intentionally excluded from Docker Compose so hot-reload stays fast during development. In production, build it with `npm run build && npm start` or deploy to Vercel.
 
 ---
 
@@ -80,7 +83,18 @@ Set `LLM_MODEL` in `backend/.env` to match whichever model you pulled.
 
 ---
 
-## 3. Start all Docker services
+## 3. Start the frontend (separate terminal)
+
+```bash
+cd frontend
+npm install
+npm run dev
+# Runs at http://localhost:3000
+```
+
+---
+
+## 4. Start all Docker services
 
 ```bash
 docker compose up -d
@@ -99,15 +113,50 @@ curl http://localhost:8000/health
 
 ---
 
-## 4. Access the app
+## 5. Access the app
 
 | Interface | URL |
 |-----------|-----|
 | App (frontend) | http://localhost:3000 |
 | API docs | http://localhost:8000/docs |
 | MinIO console | http://localhost:9001 (minioadmin / minioadmin) |
+| Adminer (DB) | http://localhost:8080 *(start with `--profile tools`)* |
 
-Register your first user at http://localhost:3000/login.
+**First run:** register at http://localhost:3000/login — the very first account created becomes admin automatically.
+
+---
+
+## User management
+
+### Open registration (default)
+Anyone who can reach the app can self-register. Fine for internal deployments behind a firewall.
+
+### Closed registration (admin-invite only)
+Set in `backend/.env`:
+
+```env
+ALLOW_REGISTRATION=false
+```
+
+When disabled, only accounts created by an admin via **Settings → Users** can log in. Attempting to self-register returns a 403.
+
+The admin can then:
+1. Create user accounts in the Settings page
+2. Assign each user to one or more workspaces with a role (`viewer`, `member`, or `admin`)
+
+### Workspace roles
+
+| Role | Can chat | Can upload | Can delete docs | Can manage workspace |
+|------|----------|------------|-----------------|----------------------|
+| `viewer` | ✓ | — | — | — |
+| `member` | ✓ | ✓ | ✓ | — |
+| `admin` *(workspace-level)* | ✓ | ✓ | ✓ | ✓ |
+
+---
+
+## Per-workspace LLM override
+
+Each workspace can use a different LLM than the global default. Set it in **Settings → Workspaces & Members → [workspace] → LLM Override**. Leave the override empty to inherit the global config.
 
 ---
 

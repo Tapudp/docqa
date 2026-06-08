@@ -184,6 +184,7 @@ Once the core product works end-to-end:
 | 7 — LLM / Ollama Settings UI | Admin page: pick model from installed Ollama list | ✅ Done |
 | 8 — Team & Member Management | Admin invites users, assigns workspace access | ✅ Done |
 | 9 — RBAC + Per-workspace Config | Enforce viewer/member/admin roles, per-workspace LLM | ✅ Done |
+| 10 — Admin Bulk Upload | Admin selects a workspace and uploads dozens of docs at once | 🔲 |
 
 ---
 
@@ -247,4 +248,35 @@ Once the core product works end-to-end:
 ✓ A "member" can upload but cannot remove other users from the workspace
 ✓ Workspace A uses llama3.2 (Ollama), workspace B uses gpt-4o-mini (OpenAI) — both work simultaneously
 ✓ Per-workspace LLM config overrides global config without affecting other workspaces
+```
+
+---
+
+## Phase 10 — Admin Bulk Upload
+
+**Goal:** An admin can select a target workspace and upload a large batch of documents in one operation — dozens of files at once. Each file is queued, parsed, and indexed independently so a single large file can't block the rest.
+
+### What gets built
+
+- **Bulk upload UI** — dedicated modal (or settings page section) accessible to admins only. Workspace picker at the top so admin can target any workspace without switching to it first.
+- **Multi-file staging** — drag-and-drop a folder or select many files at once (`multiple` + directory pick). Each file shown as a row with name, size, and per-file status.
+- **Sequential upload with live progress** — files are uploaded one at a time (avoids saturating the backend). Each row shows its own status: `queued → uploading → parsing → indexing → ready`. Admin can add more files to the queue while earlier ones are still processing.
+- **Per-file error handling** — a file that fails (bad format, size over 200 MB, parse error) is marked red with the error message inline. The rest of the batch continues unaffected.
+- **ZIP extraction** — if admin drops a `.zip` archive, the backend extracts it server-side and enqueues each contained document individually. Useful for bulk handoffs of document folders.
+- **Duplicate detection** — before uploading, check if a file with the same name already exists in the target workspace. Warn the admin; they can choose to skip or overwrite.
+- **Backend guard** — bulk upload endpoint still enforces the per-file 200 MB limit and supported MIME types. Celery handles each file as a separate task so the queue scales naturally.
+
+### What stays the same
+
+- Parsing, chunking, and indexing pipelines are unchanged — each document goes through the exact same path as a single upload.
+- The Celery worker concurrency setting controls how many files are processed simultaneously.
+
+### End-of-phase checkpoint
+```
+✓ Admin drops 30 PDFs into the bulk upload modal targeting "Legal Documents" workspace
+✓ Each file uploads and moves through queued → parsing → ready independently
+✓ One oversized file (> 200 MB) shows an error inline; the other 29 complete normally
+✓ Dropping a .zip extracts and enqueues all contained documents automatically
+✓ A non-admin user cannot access the bulk upload UI or endpoint
+✓ Duplicate filename shows a warning before upload — admin can skip or proceed
 ```
