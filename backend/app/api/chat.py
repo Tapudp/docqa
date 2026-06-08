@@ -14,9 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import get_current_user
 from app.database import get_db
 from app.models.conversation import Conversation, Message
+from app.models.system_config import SystemConfig
 from app.models.workspace import Workspace
 from app.retrieval.search import hybrid_search
-from app.llm.client import stream_chat
+from app.llm.client import stream_chat, LLMConfig
 
 router = APIRouter()
 
@@ -156,6 +157,10 @@ async def chat(
         conv.title = body.question[:80]
         await db.commit()
 
+    # Load LLM config from DB (falls back to .env if not set)
+    cfg_row = await db.get(SystemConfig, "llm")
+    llm_config: LLMConfig = cfg_row.value if cfg_row else {}
+
     # Retrieve relevant chunks
     hits = await hybrid_search(db, conv.workspace_id, body.question)
 
@@ -192,7 +197,7 @@ async def chat(
         try:
             yield f"data: {json.dumps({'type': 'citations', 'citations': citations})}\n\n".encode()
 
-            async for token in stream_chat(history, context_chunks):
+            async for token in stream_chat(history, context_chunks, llm_config):
                 full_response.append(token)
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n".encode()
 

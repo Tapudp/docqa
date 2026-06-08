@@ -51,6 +51,29 @@ export interface ApiConversation {
   created_at: string;
 }
 
+export interface LLMConfig {
+  provider: string;
+  base_url: string;
+  model: string;
+  api_key: string;
+}
+
+export interface OllamaModel {
+  name: string;
+  size: number;
+  family: string | null;
+  parameter_size: string | null;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  display_name: string | null;
+  role: string;
+  is_active: boolean;
+  created_at: string;
+}
+
 export interface ApiDocument {
   id: string;
   workspace_id: string;

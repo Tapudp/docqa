@@ -24,6 +24,7 @@ async def create_tables() -> None:
     import app.models.document  # noqa: F401
     import app.models.chunk  # noqa: F401
     import app.models.conversation  # noqa: F401
+    import app.models.system_config  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))

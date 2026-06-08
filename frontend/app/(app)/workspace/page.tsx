@@ -32,18 +32,27 @@ export default function WorkspacePage() {
   const displayName = currentUser?.display_name || currentUser?.email?.split("@")[0] || "User";
   const avatarInitial = displayName[0].toUpperCase();
 
-  // Fetch workspaces + documents on mount
+  // Fetch workspaces on mount, set first as active
   useEffect(() => {
     api.workspaces.list().then((workspaces) => {
       setApiWorkspaces(workspaces);
-      if (workspaces.length > 0) {
-        const wsId = workspaces[0].id;
-        setActiveWorkspaceId(wsId);
-        api.documents.list(wsId).then(setApiDocuments).catch(() => {});
-        api.chat.listConversations(wsId).then(setConversations).catch(() => {});
+      if (workspaces.length > 0 && !activeWorkspaceId) {
+        setActiveWorkspaceId(workspaces[0].id);
       }
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reload documents + conversations whenever active workspace changes
+  useEffect(() => {
+    if (!activeWorkspaceId) return;
+    setApiDocuments([]);
+    setConversations([]);
+    setMessages([]);
+    setActiveConversationId(null);
+    clearStreaming();
+    api.documents.list(activeWorkspaceId).then(setApiDocuments).catch(() => {});
+    api.chat.listConversations(activeWorkspaceId).then(setConversations).catch(() => {});
+  }, [activeWorkspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll in-progress documents every 2s
   useEffect(() => {

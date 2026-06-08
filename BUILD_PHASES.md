@@ -181,9 +181,9 @@ Once the core product works end-to-end:
 | 4 — Chunking + Indexing | pgvector + fastembed, doc marked ready | ✅ Done |
 | 5 — LLM Chat | Real streamed answers + filtered citations | ✅ Done |
 | 6 — PDF.js Viewer | Click citation → see the page | ✅ Done |
-| 7 — LLM / Ollama Settings UI | Admin page: pick model from installed Ollama list | 🔲 |
-| 8 — Auth Providers | SSO (Keycloak / Google), RBAC roles | 🔲 |
-| 9 — Admin Dashboard | Usage analytics, user management, storage quotas | 🔲 |
+| 7 — LLM / Ollama Settings UI | Admin page: pick model from installed Ollama list | ✅ Done |
+| 8 — Team & Member Management | Admin invites users, assigns workspace access | 🔲 Next |
+| 9 — RBAC + Per-workspace Config | Enforce viewer/member/admin roles, per-workspace LLM | 🔲 |
 
 ---
 
@@ -201,4 +201,50 @@ Once the core product works end-to-end:
 ✓ /settings shows list of models installed on the server's Ollama
 ✓ Selecting a different model and saving changes what the chat uses — no restart
 ✓ Non-admin users cannot access /settings
+```
+
+---
+
+## Phase 8 — Team & Member Management
+
+**Goal:** Admin can create user accounts and assign them to workspaces. New users who register (or are created by admin) are placed in the right workspaces — no manual DB seeding required.
+
+### What gets built
+- **Admin: create user** — `POST /api/admin/users` creates a user account with a temporary password; admin sets initial role
+- **Workspace membership API** — `POST /api/admin/workspaces/{id}/members` adds a user to a workspace with a role; `DELETE` removes them; `GET` lists current members
+- **Settings → Users tab** — admin sees all users, can create new accounts, set global role (admin / member / viewer)
+- **Settings → Workspaces tab** — per-workspace member list with add/remove UI; role picker per member
+- **Self-registration guard** — optionally disable open registration so only admin-created accounts can log in (config flag in `.env`)
+
+### End-of-phase checkpoint
+```
+✓ Admin creates a new user account from the Settings page
+✓ Admin adds that user to a specific workspace with "member" role
+✓ New user logs in and sees only the workspaces they were added to
+✓ Removing a user from a workspace immediately revokes their access
+✓ A user with no workspace memberships sees an empty state, not an error
+```
+
+---
+
+## Phase 9 — RBAC + Per-workspace Config
+
+**Goal:** Enforce what each role can do inside a workspace, and allow each workspace to use a different LLM or embedding model.
+
+### What gets built
+- **RBAC enforcement**
+  - `viewer` — can chat and view documents, cannot upload or delete
+  - `member` — can upload, chat, view; cannot delete other members' docs or manage workspace
+  - `admin` (workspace-level) — full control of that workspace including membership
+- **Permission dependency** — `require_workspace_role(min_role)` FastAPI dep used on document upload, delete, and workspace management endpoints
+- **Per-workspace LLM config** — workspace `llm_config` JSONB is respected by the chat endpoint; falls back to global system config if not set
+- **Settings → Workspace config tab** — admin can override LLM provider/model per workspace (useful when one workspace needs GPT-4o and another uses local Ollama)
+- **Frontend enforcement** — upload button hidden for viewers; delete button hidden for viewers; settings tab hidden for non-workspace-admins
+
+### End-of-phase checkpoint
+```
+✓ A "viewer" user cannot see the Upload button or delete documents
+✓ A "member" can upload but cannot remove other users from the workspace
+✓ Workspace A uses llama3.2 (Ollama), workspace B uses gpt-4o-mini (OpenAI) — both work simultaneously
+✓ Per-workspace LLM config overrides global config without affecting other workspaces
 ```

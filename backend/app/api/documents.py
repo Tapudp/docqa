@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -121,6 +122,27 @@ async def get_document(
 
     await _require_workspace_member(doc.workspace_id, current_user, db)
     return doc
+
+
+@router.get("/documents/{document_id}/file")
+async def get_document_file(
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Document).where(Document.id == document_id))
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    await _require_workspace_member(doc.workspace_id, current_user, db)
+
+    data = await minio_client.download_object(doc.storage_key)
+    return Response(
+        content=data,
+        media_type=doc.mime_type,
+        headers={"Content-Disposition": f'inline; filename="{doc.filename}"'},
+    )
 
 
 @router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -1,4 +1,4 @@
-import type { ApiUser, ApiWorkspace, ApiDocument, ApiConversation, ApiMessage, TokenResponse } from "./types";
+import type { ApiUser, ApiWorkspace, ApiDocument, ApiConversation, ApiMessage, TokenResponse, LLMConfig, OllamaModel, AdminUser } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -157,6 +157,26 @@ export const api = {
         }
       }
     },
+  },
+
+  admin: {
+    getLLMConfig: () => request<LLMConfig>("/api/admin/llm/config"),
+
+    updateLLMConfig: (cfg: Omit<LLMConfig, "api_key"> & { api_key: string }) =>
+      request<LLMConfig>("/api/admin/llm/config", {
+        method: "PATCH",
+        body: JSON.stringify(cfg),
+      }),
+
+    listOllamaModels: () => request<OllamaModel[]>("/api/admin/llm/models"),
+
+    listUsers: () => request<AdminUser[]>("/api/admin/users"),
+
+    updateUserRole: (userId: string, role: string) =>
+      request<AdminUser>(`/api/admin/users/${userId}/role`, {
+        method: "PATCH",
+        body: JSON.stringify({ role }),
+      }),
   },
 };
 

@@ -1,20 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useStore } from "@/lib/store";
-import { api } from "@/lib/api";
 
 export default function Sidebar() {
   const {
-    apiWorkspaces, activeWorkspaceId,
-    conversations, addConversation,
+    apiWorkspaces, activeWorkspaceId, setActiveWorkspaceId,
+    currentUser,
+    conversations,
     activeConversationId, setActiveConversationId,
     setMessages, clearStreaming, setIsStreaming,
-    uploadOpen, setUploadOpen,
   } = useStore();
   const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
+  const pathname = usePathname();
 
   const activeWorkspace = apiWorkspaces.find((w) => w.id === activeWorkspaceId);
+  const isAdmin = currentUser?.role === "admin";
+  const isSettings = pathname?.startsWith("/settings");
 
   async function handleNewConversation() {
     if (!activeWorkspaceId) return;
@@ -98,7 +102,7 @@ export default function Sidebar() {
               return (
                 <button
                   key={ws.id}
-                  onClick={() => setShowWorkspaceMenu(false)}
+                  onClick={() => { setActiveWorkspaceId(ws.id); setShowWorkspaceMenu(false); }}
                   style={{ width: "100%", padding: "9px 12px", background: isActive ? "#fff5f7" : "transparent", border: "none", borderBottom: i < apiWorkspaces.length - 1 ? "1px solid var(--airbnb-hairline-soft)" : "none", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: "9px", fontFamily: "inherit" }}
                 >
                   <div style={{ width: "5px", flexShrink: 0 }}>
@@ -202,14 +206,40 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Bottom status */}
-      <div style={{ padding: "10px 14px 14px", borderTop: "1px solid var(--airbnb-hairline)" }}>
+      {/* Bottom bar: model status + admin settings link */}
+      <div style={{ padding: "10px 12px 14px", borderTop: "1px solid var(--airbnb-hairline)", display: "flex", flexDirection: "column", gap: "8px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
           <div style={{ width: "5px", height: "5px", borderRadius: "50%", background: "#22c55e", flexShrink: 0 }} />
           <span style={{ fontSize: "11px", color: "var(--airbnb-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            llama3.2 · hybrid retrieval
+            {currentUser?.display_name ?? currentUser?.email ?? "…"}
+            {isAdmin && <span style={{ marginLeft: "5px", fontSize: "10px", fontWeight: 600, background: "rgba(255,56,92,0.1)", color: "var(--airbnb-rausch)", borderRadius: "3px", padding: "1px 5px" }}>admin</span>}
           </span>
         </div>
+
+        {isAdmin && (
+          <Link
+            href="/settings"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "7px",
+              padding: "8px 10px",
+              borderRadius: "var(--radius-sm)",
+              background: isSettings ? "var(--airbnb-canvas)" : "transparent",
+              border: isSettings ? "1px solid var(--airbnb-hairline)" : "1px solid transparent",
+              textDecoration: "none",
+              transition: "background-color 0.1s ease, border-color 0.1s ease",
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+              <circle cx="6.5" cy="6.5" r="2" stroke={isSettings ? "var(--airbnb-rausch)" : "var(--airbnb-muted)"} strokeWidth="1.2" />
+              <path d="M6.5 1v1.2M6.5 10.8V12M1 6.5h1.2M10.8 6.5H12M2.64 2.64l.85.85M9.51 9.51l.85.85M9.51 3.49l-.85.85M3.49 9.51l-.85.85" stroke={isSettings ? "var(--airbnb-rausch)" : "var(--airbnb-muted)"} strokeWidth="1.2" strokeLinecap="round" />
+            </svg>
+            <span style={{ fontSize: "12px", fontWeight: isSettings ? 600 : 400, color: isSettings ? "var(--airbnb-rausch)" : "var(--airbnb-muted)" }}>
+              Settings
+            </span>
+          </Link>
+        )}
       </div>
     </aside>
   );
