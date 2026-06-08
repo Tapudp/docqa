@@ -1,4 +1,4 @@
-import type { ApiUser, ApiWorkspace, ApiDocument, ApiConversation, ApiMessage, TokenResponse, LLMConfig, OllamaModel, AdminUser, WorkspaceMember } from "./types";
+import type { ApiUser, ApiWorkspace, ApiDocument, ApiConversation, ApiMessage, TokenResponse, LLMConfig, OllamaModel, AdminUser, WorkspaceMember, BulkFileResult } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -223,6 +223,27 @@ export const api = {
 
     clearWorkspaceLLMConfig: (workspaceId: string) =>
       request<void>(`/api/admin/workspaces/${workspaceId}/llm`, { method: "DELETE" }),
+
+    listAllWorkspaces: () =>
+      request<ApiWorkspace[]>("/api/admin/workspaces"),
+
+    uploadDocument: (workspaceId: string, file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return request<ApiDocument>(`/api/admin/workspaces/${workspaceId}/documents`, {
+        method: "POST",
+        body: form,
+      });
+    },
+
+    uploadZip: (workspaceId: string, file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return request<BulkFileResult[]>(`/api/admin/workspaces/${workspaceId}/bulk-upload-zip`, {
+        method: "POST",
+        body: form,
+      });
+    },
   },
 };
 

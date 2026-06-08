@@ -9,12 +9,14 @@ import type { ApiMessage, Citation } from "@/lib/types";
 import Sidebar from "@/components/layout/Sidebar";
 import RightPanel from "@/components/layout/PDFViewerPanel";
 import ChatMessage from "@/components/chat/ChatMessage";
+import TypingIndicator from "@/components/chat/TypingIndicator";
 import UploadZone from "@/components/documents/UploadZone";
+import BulkUploadModal from "@/components/documents/BulkUploadModal";
 
 export default function WorkspacePage() {
   const router = useRouter();
   const {
-    uploadOpen,
+    uploadOpen, bulkUploadOpen, setBulkUploadOpen,
     currentUser, clearAuth,
     apiWorkspaces, setApiWorkspaces, activeWorkspaceId, setActiveWorkspaceId,
     setApiDocuments, updateApiDocument, apiDocuments,
@@ -27,6 +29,7 @@ export default function WorkspacePage() {
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [input, setInput] = useState("");
+  const [thinking, setThinking] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -116,6 +119,7 @@ export default function WorkspacePage() {
       created_at: new Date().toISOString(),
     };
     appendMessage(tempUserMsg);
+    setThinking(true);
 
     setIsStreaming(true);
     clearStreaming();
@@ -129,9 +133,11 @@ export default function WorkspacePage() {
         finalCitations = citations as Citation[];
         setStreamingCitations(citations as Citation[]);
       },
-      (token) => appendStreamingToken(token),
+      (token) => {
+        appendStreamingToken(token);
+      },
       async () => {
-        // Stream done — fetch real messages from server to get persisted IDs
+        setThinking(false);
         setIsStreaming(false);
         clearStreaming();
         try {
@@ -140,6 +146,7 @@ export default function WorkspacePage() {
         } catch {}
       },
       (err) => {
+        setThinking(false);
         setIsStreaming(false);
         clearStreaming();
         console.error("Chat error:", err);
@@ -225,6 +232,30 @@ export default function WorkspacePage() {
           <span style={{ fontSize: "12px", color: "var(--airbnb-muted)", background: "var(--airbnb-surface-soft)", border: "1px solid var(--airbnb-hairline)", borderRadius: "var(--radius-full)", padding: "3px 10px", whiteSpace: "nowrap" }}>
             hybrid retrieval
           </span>
+
+          {currentUser?.role === "admin" && (
+            <button
+              onClick={() => setBulkUploadOpen(true)}
+              style={{
+                display: "flex", alignItems: "center", gap: "6px",
+                height: "32px", padding: "0 14px",
+                background: "var(--airbnb-ink)", border: "none",
+                borderRadius: "var(--radius-sm)", fontSize: "13px", fontWeight: 600,
+                color: "white", cursor: "pointer", fontFamily: "inherit",
+                transition: "opacity 0.12s ease, transform 0.1s ease",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.88")}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
+              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M6 1v7M3 5l3-4 3 4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M1 9v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V9" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              Bulk Upload
+            </button>
+          )}
 
           <div style={{ width: "1px", height: "18px", background: "var(--airbnb-hairline)" }} />
 
@@ -334,14 +365,17 @@ export default function WorkspacePage() {
                 <ChatMessage key={msg.id} message={msg} />
               ))}
 
-              {/* Streaming response */}
-              {isStreaming && (
+              {/* Thinking indicator — stays until full response received */}
+              {thinking && <TypingIndicator />}
+
+              {/* Streaming response — only shown after thinking is done */}
+              {!thinking && isStreaming && streamingContent && (
                 <ChatMessage
                   message={{
                     id: "streaming",
                     conversation_id: activeConversationId ?? "",
                     role: "assistant",
-                    content: streamingContent || " ",
+                    content: streamingContent,
                     citations: streamingCitations.length > 0 ? streamingCitations : null,
                     created_at: new Date().toISOString(),
                   }}
@@ -436,9 +470,17 @@ export default function WorkspacePage() {
       </div>
 
       {uploadOpen && <UploadZone />}
+      {bulkUploadOpen && <BulkUploadModal />}
 
       <style>{`
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+        @keyframes typing-bounce {
+          0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+          30% { transform: translateY(-5px); opacity: 1; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          @keyframes typing-bounce { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+        }
       `}</style>
     </>
   );

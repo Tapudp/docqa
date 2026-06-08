@@ -1,9 +1,11 @@
+import io
 import logging
 import uuid as _uuid
+import zipfile
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,9 +14,27 @@ from app.auth.deps import require_admin
 from app.auth.password import hash_password
 from app.config import settings
 from app.database import get_db
+from app.models.document import Document
 from app.models.system_config import SystemConfig
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
+from app.schemas.document import DocumentOut
+from app.schemas.workspace import WorkspaceOut
+from app.storage import minio_client
+from app.worker.tasks import parse_document
+
+_MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024  # 10 GB (admin bulk upload)
+_MIME_MAP: dict[str, str] = {
+    "pdf":  "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "png":  "image/png",
+    "jpg":  "image/jpeg",
+    "jpeg": "image/jpeg",
+    "tiff": "image/tiff",
+}
+_ALLOWED_MIME_TYPES = set(_MIME_MAP.values())
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -259,6 +279,140 @@ async def set_user_active(
     await db.commit()
     await db.refresh(target)
     return _user_out(target)
+
+
+# ── Bulk upload ───────────────────────────────────────────────
+
+@router.get("/workspaces", response_model=list[WorkspaceOut])
+async def list_all_workspaces(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """All workspaces — admin sees every workspace regardless of membership."""
+    result = await db.execute(
+        select(Workspace).where(Workspace.is_active == True).order_by(Workspace.created_at.asc())  # noqa: E712
+    )
+    out = []
+    for ws in result.scalars().all():
+        ws_out = WorkspaceOut.model_validate(ws)
+        ws_out.member_role = "admin"
+        out.append(ws_out)
+    return out
+
+
+@router.post("/workspaces/{workspace_id}/documents", response_model=DocumentOut, status_code=201)
+async def admin_upload_document(
+    workspace_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Upload a single file to any workspace — bypasses membership check."""
+    ws = await db.get(Workspace, _uuid.UUID(workspace_id))
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    content_type = file.content_type or "application/octet-stream"
+    if content_type not in _ALLOWED_MIME_TYPES:
+        raise HTTPException(status_code=422, detail=f"File type '{content_type}' is not supported.")
+
+    data = await file.read()
+    if len(data) > _MAX_FILE_SIZE:
+        raise HTTPException(status_code=422, detail="File exceeds the 200 MB limit.")
+
+    doc_id = _uuid.uuid4()
+    storage_key = f"workspaces/{workspace_id}/documents/{doc_id}/{file.filename}"
+    await minio_client.upload_object(storage_key, data, content_type)
+
+    doc = Document(
+        id=doc_id,
+        workspace_id=_uuid.UUID(workspace_id),
+        uploaded_by=admin.id,
+        filename=file.filename or "untitled",
+        file_size=len(data),
+        mime_type=content_type,
+        storage_key=storage_key,
+        status="received",
+    )
+    db.add(doc)
+    await db.commit()
+    await db.refresh(doc)
+    parse_document.delay(str(doc.id))
+    return doc
+
+
+class BulkFileResult(BaseModel):
+    filename: str
+    status: str          # "queued" | "skipped" | "error"
+    document_id: str | None = None
+    reason: str | None = None
+
+
+@router.post("/workspaces/{workspace_id}/bulk-upload-zip", response_model=list[BulkFileResult])
+async def admin_bulk_upload_zip(
+    workspace_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Extract a .zip archive and queue every supported file inside it."""
+    ws = await db.get(Workspace, _uuid.UUID(workspace_id))
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    if not (file.filename or "").lower().endswith(".zip"):
+        raise HTTPException(status_code=422, detail="File must be a .zip archive.")
+
+    data = await file.read()
+    results: list[BulkFileResult] = []
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            for name in zf.namelist():
+                if name.endswith("/") or "__MACOSX" in name:
+                    continue
+                filename = name.split("/")[-1]
+                if not filename or filename.startswith("."):
+                    continue
+
+                ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+                content_type = _MIME_MAP.get(ext)
+                if not content_type:
+                    results.append(BulkFileResult(filename=filename, status="skipped", reason=f"Unsupported format .{ext}"))
+                    continue
+
+                file_data = zf.read(name)
+                if len(file_data) > _MAX_FILE_SIZE:
+                    results.append(BulkFileResult(filename=filename, status="error", reason="Exceeds 200 MB limit"))
+                    continue
+
+                try:
+                    doc_id = _uuid.uuid4()
+                    storage_key = f"workspaces/{workspace_id}/documents/{doc_id}/{filename}"
+                    await minio_client.upload_object(storage_key, file_data, content_type)
+
+                    doc = Document(
+                        id=doc_id,
+                        workspace_id=_uuid.UUID(workspace_id),
+                        uploaded_by=admin.id,
+                        filename=filename,
+                        file_size=len(file_data),
+                        mime_type=content_type,
+                        storage_key=storage_key,
+                        status="received",
+                    )
+                    db.add(doc)
+                    await db.flush()
+                    parse_document.delay(str(doc.id))
+                    results.append(BulkFileResult(filename=filename, status="queued", document_id=str(doc_id)))
+                except Exception as exc:
+                    results.append(BulkFileResult(filename=filename, status="error", reason=str(exc)))
+
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=422, detail="Invalid or corrupted .zip file.")
+
+    await db.commit()
+    return results
 
 
 # ── Per-workspace LLM config ──────────────────────────────────

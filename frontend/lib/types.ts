@@ -74,6 +74,13 @@ export interface AdminUser {
   created_at: string;
 }
 
+export interface BulkFileResult {
+  filename: string;
+  status: "queued" | "skipped" | "error";
+  document_id?: string;
+  reason?: string;
+}
+
 export interface WorkspaceMember {
   user_id: string;
   email: string;

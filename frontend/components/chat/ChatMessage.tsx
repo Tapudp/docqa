@@ -125,22 +125,58 @@ export default function ChatMessage({ message, isStreaming }: Props) {
             boxShadow: "rgba(0,0,0,0.02) 0 1px 4px",
           }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: "0px" }}>
-            {renderContent(message.content)}
-            {isStreaming && (
-              <span
-                style={{
-                  display: "inline-block",
-                  width: "2px",
-                  height: "16px",
-                  background: "var(--airbnb-rausch)",
-                  marginLeft: "2px",
-                  verticalAlign: "middle",
-                  animation: "blink 1s step-end infinite",
-                }}
-              />
-            )}
-          </div>
+          {isStreaming && !message.content.trim() ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <span style={{ fontSize: "22px", animation: "docqa-sway 1.6s ease-in-out infinite" }}>🤔</span>
+              <span style={{ fontSize: "16px", fontWeight: 700, color: "var(--airbnb-ink)" }}>
+                Thinking
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    style={{
+                      display: "inline-block",
+                      width: "8px",
+                      height: "8px",
+                      borderRadius: "50%",
+                      background: "var(--airbnb-ink)",
+                      animation: "docqa-bounce 1.2s ease-in-out infinite",
+                      animationDelay: `${i * 0.2}s`,
+                    }}
+                  />
+                ))}
+              </span>
+              <style>{`
+                @keyframes docqa-bounce {
+                  0%, 80%, 100% { transform: translateY(0); opacity: 0.3; }
+                  40% { transform: translateY(-6px); opacity: 1; }
+                }
+                @keyframes docqa-sway {
+                  0%, 100% { transform: rotate(-8deg); }
+                  50% { transform: rotate(8deg); }
+                }
+              `}</style>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0px" }}>
+              {renderContent(message.content)}
+              {isStreaming && (
+                <span
+                  style={{
+                    display: "inline-block",
+                    width: "2px",
+                    height: "16px",
+                    background: "var(--airbnb-rausch)",
+                    marginLeft: "2px",
+                    verticalAlign: "middle",
+                    animation: "blink 1s step-end infinite",
+                  }}
+                />
+              )}
+            </div>
+          )}
+
 
           {citations && citations.length > 0 && (
             <div

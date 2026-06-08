@@ -60,6 +60,8 @@ interface DocQAStore {
   /* ── Upload UI ─────────────────────────────────────────── */
   uploadOpen: boolean;
   setUploadOpen: (open: boolean) => void;
+  bulkUploadOpen: boolean;
+  setBulkUploadOpen: (open: boolean) => void;
 }
 
 export const useStore = create<DocQAStore>((set) => ({
@@ -144,4 +146,6 @@ export const useStore = create<DocQAStore>((set) => ({
   /* Upload */
   uploadOpen: false,
   setUploadOpen: (open) => set({ uploadOpen: open }),
+  bulkUploadOpen: false,
+  setBulkUploadOpen: (open) => set({ bulkUploadOpen: open }),
 }));

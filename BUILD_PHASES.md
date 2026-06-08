@@ -184,7 +184,7 @@ Once the core product works end-to-end:
 | 7 — LLM / Ollama Settings UI | Admin page: pick model from installed Ollama list | ✅ Done |
 | 8 — Team & Member Management | Admin invites users, assigns workspace access | ✅ Done |
 | 9 — RBAC + Per-workspace Config | Enforce viewer/member/admin roles, per-workspace LLM | ✅ Done |
-| 10 — Admin Bulk Upload | Admin selects a workspace and uploads dozens of docs at once | 🔲 |
+| 10 — Admin Bulk Upload | Admin selects a workspace and uploads dozens of docs at once | ✅ Done |
 
 ---
 
@@ -252,7 +252,7 @@ Once the core product works end-to-end:
 
 ---
 
-## Phase 10 — Admin Bulk Upload
+## ✅ Phase 10 — Admin Bulk Upload (DONE)
 
 **Goal:** An admin can select a target workspace and upload a large batch of documents in one operation — dozens of files at once. Each file is queued, parsed, and indexed independently so a single large file can't block the rest.
 

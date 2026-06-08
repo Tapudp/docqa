@@ -263,6 +263,17 @@ docker compose down -v
 
 ---
 
+## File size limits
+
+| Upload path | Limit |
+|-------------|-------|
+| Regular upload (member/admin) | 200 MB per file |
+| Admin bulk upload (individual or inside ZIP) | 10 GB per file |
+
+**nginx in production:** if you put nginx in front of the API, set `client_max_body_size 10g;` in the server block, otherwise nginx will reject large bulk uploads with HTTP 413 before they reach FastAPI.
+
+---
+
 ## Data persistence
 
 All data lives in named Docker volumes:

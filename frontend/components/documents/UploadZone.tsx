@@ -158,8 +158,11 @@ export default function UploadZone() {
             <p style={{ fontSize: "15px", fontWeight: 500, color: "var(--airbnb-ink)", marginBottom: "4px" }}>
               {dragging ? "Drop to upload" : "Drag & drop files here"}
             </p>
-            <p style={{ fontSize: "13px", color: "var(--airbnb-muted)", marginBottom: "16px" }}>
+            <p style={{ fontSize: "13px", color: "var(--airbnb-muted)", marginBottom: "4px" }}>
               PDF, DOCX, XLSX, PPTX, PNG, JPG, TIFF · Max 200 MB
+            </p>
+            <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", marginBottom: "16px", opacity: 0.7 }}>
+              Need to upload larger files? Ask your admin to use Bulk Upload.
             </p>
 
             <label
@@ -240,7 +243,7 @@ export default function UploadZone() {
           }}
         >
           <p style={{ fontSize: "12px", color: "var(--airbnb-muted)" }}>
-            Parser: PaddleOCR · Max 200 MB per file
+            Parser: PaddleOCR · Max 200 MB · For larger files, contact your admin
           </p>
           <div style={{ display: "flex", gap: "8px" }}>
             <button
