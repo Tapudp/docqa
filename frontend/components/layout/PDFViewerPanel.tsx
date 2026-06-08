@@ -1,8 +1,18 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useStore } from "@/lib/store";
 import DocumentCard from "@/components/documents/DocumentCard";
 import type { ApiDocument } from "@/lib/types";
+
+const PDFViewer = dynamic(() => import("@/components/documents/PDFViewer"), {
+  ssr: false,
+  loading: () => (
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <p style={{ fontSize: "12px", color: "var(--airbnb-muted)" }}>Loading viewer…</p>
+    </div>
+  ),
+});
 
 export default function RightPanel() {
   const {
@@ -290,88 +300,12 @@ export default function RightPanel() {
                 />
               </div>
 
-              {/* Simulated page */}
-              <div
-                style={{
-                  flex: 1,
-                  overflowY: "auto",
-                  padding: "14px",
-                }}
-              >
-                <div
-                  key={pdfPage}
-                  className="animate-fade-in"
-                  style={{
-                    background: "white",
-                    border: "1px solid var(--airbnb-hairline)",
-                    borderRadius: "4px",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.07)",
-                    padding: "28px 24px 40px",
-                    minHeight: "440px",
-                    position: "relative",
-                  }}
-                >
-                  {/* Highlight region */}
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "68px",
-                      left: "24px",
-                      right: "24px",
-                      height: "52px",
-                      background: "rgba(255, 56, 92, 0.07)",
-                      borderLeft: "3px solid var(--airbnb-rausch)",
-                      borderRadius: "0 3px 3px 0",
-                    }}
-                  />
-
-                  {/* Skeleton lines */}
-                  {Array.from({ length: 20 }).map((_, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        height: "9px",
-                        background:
-                          i === 2 || i === 3
-                            ? "rgba(255,56,92,0.13)"
-                            : "var(--airbnb-surface-strong)",
-                        borderRadius: "3px",
-                        marginBottom: "9px",
-                        width:
-                          i % 5 === 0 ? "65%"
-                          : i % 4 === 0 ? "88%"
-                          : i % 3 === 0 ? "52%"
-                          : "100%",
-                      }}
-                    />
-                  ))}
-
-                  {/* Page number */}
-                  <p
-                    style={{
-                      position: "absolute",
-                      bottom: "14px",
-                      left: "50%",
-                      transform: "translateX(-50%)",
-                      fontSize: "10px",
-                      color: "var(--airbnb-muted-soft)",
-                    }}
-                  >
-                    — {pdfPage} —
-                  </p>
-                </div>
-
-                <p
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--airbnb-muted-soft)",
-                    textAlign: "center",
-                    marginTop: "10px",
-                  }}
-                >
-                  PDF.js integration — Phase 2
-                </p>
-              </div>
+              <PDFViewer
+                documentId={pdfDoc.id}
+                page={pdfPage}
+                onPageChange={setPdfPage}
+                totalPages={pdfDoc.total_pages ?? null}
+              />
             </>
           )}
         </div>

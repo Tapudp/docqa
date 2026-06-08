@@ -180,7 +180,7 @@ Once the core product works end-to-end:
 | 3 — Parsing Pipeline | pypdf parser + Celery worker | ✅ Done |
 | 4 — Chunking + Indexing | pgvector + fastembed, doc marked ready | ✅ Done |
 | 5 — LLM Chat | Real streamed answers + filtered citations | ✅ Done |
-| 6 — PDF.js Viewer | Click citation → see the page | 🔲 Next |
+| 6 — PDF.js Viewer | Click citation → see the page | ✅ Done |
 | 7 — LLM / Ollama Settings UI | Admin page: pick model from installed Ollama list | 🔲 |
 | 8 — Auth Providers | SSO (Keycloak / Google), RBAC roles | 🔲 |
 | 9 — Admin Dashboard | Usage analytics, user management, storage quotas | 🔲 |
