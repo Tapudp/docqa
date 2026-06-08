@@ -15,7 +15,7 @@ export default function WorkspacePage() {
   const {
     uploadOpen,
     currentUser, clearAuth,
-    setApiWorkspaces, activeWorkspaceId, setActiveWorkspaceId,
+    apiWorkspaces, setApiWorkspaces, activeWorkspaceId, setActiveWorkspaceId,
     setApiDocuments, updateApiDocument, apiDocuments,
     conversations, setConversations, addConversation,
     activeConversationId, setActiveConversationId,
@@ -36,9 +36,12 @@ export default function WorkspacePage() {
   useEffect(() => {
     api.workspaces.list().then((workspaces) => {
       setApiWorkspaces(workspaces);
-      if (workspaces.length > 0 && !activeWorkspaceId) {
-        setActiveWorkspaceId(workspaces[0].id);
-      }
+      if (workspaces.length === 0) return;
+      // Always pick from this user's workspace list — stale activeWorkspaceId from a
+      // previous session may point to a workspace the current user can't access
+      const currentId = useStore.getState().activeWorkspaceId;
+      const stillValid = workspaces.some((w) => w.id === currentId);
+      if (!stillValid) setActiveWorkspaceId(workspaces[0].id);
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -152,6 +155,26 @@ export default function WorkspacePage() {
 
   const activeConv = conversations.find((c) => c.id === activeConversationId);
   const readyDocCount = apiDocuments.filter((d) => d.status === "ready").length;
+  const workspacesLoaded = apiWorkspaces.length > 0 || activeWorkspaceId !== null;
+
+  // No workspaces assigned — show a holding page instead of a broken UI
+  if (workspacesLoaded && apiWorkspaces.length === 0) {
+    return (
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--airbnb-canvas)", flexDirection: "column", gap: "12px" }}>
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+          <rect x="4" y="4" width="32" height="32" rx="8" stroke="var(--airbnb-hairline)" strokeWidth="2" />
+          <path d="M13 20h14M13 14h8M13 26h10" stroke="var(--airbnb-muted)" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+        <p style={{ fontSize: "16px", fontWeight: 600, color: "var(--airbnb-ink)", margin: 0 }}>No workspaces yet</p>
+        <p style={{ fontSize: "13px", color: "var(--airbnb-muted)", margin: 0, textAlign: "center", maxWidth: "320px" }}>
+          You haven&apos;t been added to any workspace. Ask your administrator to add you.
+        </p>
+        <button onClick={handleLogout} style={{ marginTop: "8px", height: "36px", padding: "0 16px", background: "transparent", border: "1px solid var(--airbnb-hairline)", borderRadius: "var(--radius-sm)", fontSize: "13px", cursor: "pointer", color: "var(--airbnb-muted)", fontFamily: "inherit" }}>
+          Sign out
+        </button>
+      </div>
+    );
+  }
 
   return (
     <>

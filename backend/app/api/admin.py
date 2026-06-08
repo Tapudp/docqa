@@ -1,16 +1,20 @@
 import logging
+import uuid as _uuid
 from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import require_admin
+from app.auth.password import hash_password
 from app.config import settings
 from app.database import get_db
 from app.models.system_config import SystemConfig
 from app.models.user import User
+from app.models.workspace import Workspace, WorkspaceMember
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -162,7 +166,25 @@ class UserOut(BaseModel):
 
 
 class UserRoleUpdate(BaseModel):
-    role: str   # "admin" | "member" | "viewer"
+    role: str
+
+
+class UserCreate(BaseModel):
+    email: str
+    display_name: str = ""
+    password: str
+    role: str = "member"
+
+
+def _user_out(u: User) -> UserOut:
+    return UserOut(
+        id=str(u.id),
+        email=u.email,
+        display_name=u.display_name,
+        role=u.role,
+        is_active=u.is_active,
+        created_at=u.created_at.isoformat(),
+    )
 
 
 @router.get("/users", response_model=list[UserOut])
@@ -170,20 +192,33 @@ async def list_users(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    from sqlalchemy import select
     result = await db.execute(select(User).order_by(User.created_at.asc()))
-    users = result.scalars().all()
-    return [
-        UserOut(
-            id=str(u.id),
-            email=u.email,
-            display_name=u.display_name,
-            role=u.role,
-            is_active=u.is_active,
-            created_at=u.created_at.isoformat(),
-        )
-        for u in users
-    ]
+    return [_user_out(u) for u in result.scalars().all()]
+
+
+@router.post("/users", response_model=UserOut, status_code=201)
+async def create_user(
+    body: UserCreate,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    if body.role not in ("admin", "member", "viewer"):
+        raise HTTPException(status_code=422, detail="role must be admin, member, or viewer")
+
+    existing = await db.execute(select(User).where(User.email == body.email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    user = User(
+        email=body.email,
+        display_name=body.display_name or body.email.split("@")[0],
+        password_hash=hash_password(body.password),
+        role=body.role,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return _user_out(user)
 
 
 @router.patch("/users/{user_id}/role", response_model=UserOut)
@@ -193,7 +228,6 @@ async def update_user_role(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    import uuid as _uuid
     if body.role not in ("admin", "member", "viewer"):
         raise HTTPException(status_code=422, detail="role must be admin, member, or viewer")
 
@@ -206,12 +240,170 @@ async def update_user_role(
     target.role = body.role
     await db.commit()
     await db.refresh(target)
+    return _user_out(target)
 
-    return UserOut(
-        id=str(target.id),
-        email=target.email,
-        display_name=target.display_name,
-        role=target.role,
-        is_active=target.is_active,
-        created_at=target.created_at.isoformat(),
+
+@router.patch("/users/{user_id}/active", response_model=UserOut)
+async def set_user_active(
+    user_id: str,
+    active: bool,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    target = await db.get(User, _uuid.UUID(user_id))
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if str(target.id) == str(admin.id):
+        raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
+    target.is_active = active
+    await db.commit()
+    await db.refresh(target)
+    return _user_out(target)
+
+
+# ── Workspace membership ───────────────────────────────────────
+
+class MemberOut(BaseModel):
+    user_id: str
+    email: str
+    display_name: str | None
+    role: str
+    joined_at: str
+
+
+class MemberAdd(BaseModel):
+    user_id: str
+    role: str = "member"
+
+
+class MemberRoleUpdate(BaseModel):
+    role: str
+
+
+@router.get("/workspaces/{workspace_id}/members", response_model=list[MemberOut])
+async def list_workspace_members(
+    workspace_id: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    ws = await db.get(Workspace, _uuid.UUID(workspace_id))
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    result = await db.execute(
+        select(WorkspaceMember, User)
+        .join(User, User.id == WorkspaceMember.user_id)
+        .where(WorkspaceMember.workspace_id == _uuid.UUID(workspace_id))
+        .order_by(WorkspaceMember.joined_at.asc())
     )
+    return [
+        MemberOut(
+            user_id=str(m.user_id),
+            email=u.email,
+            display_name=u.display_name,
+            role=m.role,
+            joined_at=m.joined_at.isoformat(),
+        )
+        for m, u in result.all()
+    ]
+
+
+@router.post("/workspaces/{workspace_id}/members", response_model=MemberOut, status_code=201)
+async def add_workspace_member(
+    workspace_id: str,
+    body: MemberAdd,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    if body.role not in ("admin", "member", "viewer"):
+        raise HTTPException(status_code=422, detail="role must be admin, member, or viewer")
+
+    ws = await db.get(Workspace, _uuid.UUID(workspace_id))
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    user = await db.get(User, _uuid.UUID(body.user_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    existing = await db.execute(
+        select(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == _uuid.UUID(workspace_id),
+            WorkspaceMember.user_id == _uuid.UUID(body.user_id),
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="User is already a member")
+
+    member = WorkspaceMember(
+        workspace_id=_uuid.UUID(workspace_id),
+        user_id=_uuid.UUID(body.user_id),
+        role=body.role,
+    )
+    db.add(member)
+    await db.commit()
+    await db.refresh(member)
+
+    return MemberOut(
+        user_id=str(member.user_id),
+        email=user.email,
+        display_name=user.display_name,
+        role=member.role,
+        joined_at=member.joined_at.isoformat(),
+    )
+
+
+@router.patch("/workspaces/{workspace_id}/members/{user_id}", response_model=MemberOut)
+async def update_workspace_member_role(
+    workspace_id: str,
+    user_id: str,
+    body: MemberRoleUpdate,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    if body.role not in ("admin", "member", "viewer"):
+        raise HTTPException(status_code=422, detail="role must be admin, member, or viewer")
+
+    result = await db.execute(
+        select(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == _uuid.UUID(workspace_id),
+            WorkspaceMember.user_id == _uuid.UUID(user_id),
+        )
+    )
+    member = result.scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    user = await db.get(User, _uuid.UUID(user_id))
+    member.role = body.role
+    await db.commit()
+    await db.refresh(member)
+
+    return MemberOut(
+        user_id=str(member.user_id),
+        email=user.email,
+        display_name=user.display_name,
+        role=member.role,
+        joined_at=member.joined_at.isoformat(),
+    )
+
+
+@router.delete("/workspaces/{workspace_id}/members/{user_id}", status_code=204)
+async def remove_workspace_member(
+    workspace_id: str,
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    result = await db.execute(
+        select(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == _uuid.UUID(workspace_id),
+            WorkspaceMember.user_id == _uuid.UUID(user_id),
+        )
+    )
+    member = result.scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    await db.delete(member)
+    await db.commit()

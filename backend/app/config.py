@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     # App
     app_name: str = "NpuDen DocQA"
     debug: bool = False
+    allow_registration: bool = True   # set False to require admin-created accounts only
 
 
 settings = Settings()

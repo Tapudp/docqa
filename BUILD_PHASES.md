@@ -182,7 +182,7 @@ Once the core product works end-to-end:
 | 5 — LLM Chat | Real streamed answers + filtered citations | ✅ Done |
 | 6 — PDF.js Viewer | Click citation → see the page | ✅ Done |
 | 7 — LLM / Ollama Settings UI | Admin page: pick model from installed Ollama list | ✅ Done |
-| 8 — Team & Member Management | Admin invites users, assigns workspace access | 🔲 Next |
+| 8 — Team & Member Management | Admin invites users, assigns workspace access | ✅ Done |
 | 9 — RBAC + Per-workspace Config | Enforce viewer/member/admin roles, per-workspace LLM | 🔲 |
 
 ---

@@ -1,4 +1,4 @@
-import type { ApiUser, ApiWorkspace, ApiDocument, ApiConversation, ApiMessage, TokenResponse, LLMConfig, OllamaModel, AdminUser } from "./types";
+import type { ApiUser, ApiWorkspace, ApiDocument, ApiConversation, ApiMessage, TokenResponse, LLMConfig, OllamaModel, AdminUser, WorkspaceMember } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -172,10 +172,41 @@ export const api = {
 
     listUsers: () => request<AdminUser[]>("/api/admin/users"),
 
+    createUser: (data: { email: string; display_name?: string; password: string; role: string }) =>
+      request<AdminUser>("/api/admin/users", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
     updateUserRole: (userId: string, role: string) =>
       request<AdminUser>(`/api/admin/users/${userId}/role`, {
         method: "PATCH",
         body: JSON.stringify({ role }),
+      }),
+
+    setUserActive: (userId: string, active: boolean) =>
+      request<AdminUser>(`/api/admin/users/${userId}/active?active=${active}`, {
+        method: "PATCH",
+      }),
+
+    listMembers: (workspaceId: string) =>
+      request<WorkspaceMember[]>(`/api/admin/workspaces/${workspaceId}/members`),
+
+    addMember: (workspaceId: string, userId: string, role: string) =>
+      request<WorkspaceMember>(`/api/admin/workspaces/${workspaceId}/members`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: userId, role }),
+      }),
+
+    updateMemberRole: (workspaceId: string, userId: string, role: string) =>
+      request<WorkspaceMember>(`/api/admin/workspaces/${workspaceId}/members/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ role }),
+      }),
+
+    removeMember: (workspaceId: string, userId: string) =>
+      request<void>(`/api/admin/workspaces/${workspaceId}/members/${userId}`, {
+        method: "DELETE",
       }),
   },
 };

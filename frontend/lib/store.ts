@@ -71,7 +71,22 @@ export const useStore = create<DocQAStore>((set) => ({
   },
   clearAuth: () => {
     if (typeof window !== "undefined") localStorage.removeItem("docqa_token");
-    set({ currentUser: null, token: null });
+    set({
+      currentUser: null,
+      token: null,
+      // Reset all workspace-scoped state so the next user starts clean
+      apiWorkspaces: [],
+      activeWorkspaceId: null,
+      apiDocuments: [],
+      conversations: [],
+      activeConversationId: null,
+      messages: [],
+      streamingContent: "",
+      streamingCitations: [],
+      isStreaming: false,
+      pdfDocId: null,
+      rightTab: "documents",
+    });
   },
 
   /* Workspaces */

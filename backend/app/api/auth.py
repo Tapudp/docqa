@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import get_current_user
 from app.auth.jwt import create_access_token
 from app.auth.password import hash_password, verify_password
+from app.config import settings
 from app.database import get_db
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
@@ -18,32 +19,46 @@ router = APIRouter()
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    if not settings.allow_registration:
+        # Check if any user exists — allow the very first account even when closed
+        count = await db.execute(select(User).limit(1))
+        if count.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Open registration is disabled. Contact your administrator.",
+            )
+
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+
+    # First user ever becomes admin; subsequent self-registrations are members
+    user_count_result = await db.execute(select(User).limit(1))
+    is_first_user = user_count_result.scalar_one_or_none() is None
 
     user = User(
         email=body.email,
         display_name=body.display_name or body.email.split("@")[0],
         password_hash=hash_password(body.password),
-        role="admin",  # first user is admin; tighten in Phase 2
+        role="admin" if is_first_user else "member",
     )
     db.add(user)
-    await db.flush()  # get user.id before creating workspace
-
-    # Create a default workspace for the new user
-    workspace_name = f"{user.display_name}'s Workspace"
-    workspace = Workspace(
-        name=workspace_name,
-        slug=_unique_slug(slugify(workspace_name)),
-        description="My default workspace",
-        created_by=user.id,
-    )
-    db.add(workspace)
     await db.flush()
 
-    member = WorkspaceMember(user_id=user.id, workspace_id=workspace.id, role="admin")
-    db.add(member)
+    if is_first_user:
+        # Give the first user a default workspace to get started
+        workspace_name = f"{user.display_name}'s Workspace"
+        workspace = Workspace(
+            name=workspace_name,
+            slug=_unique_slug(slugify(workspace_name)),
+            description="My default workspace",
+            created_by=user.id,
+        )
+        db.add(workspace)
+        await db.flush()
+        member = WorkspaceMember(user_id=user.id, workspace_id=workspace.id, role="admin")
+        db.add(member)
+
     await db.commit()
     await db.refresh(user)
 
