@@ -145,20 +145,19 @@ export default function ChatMessage({ message, isStreaming }: Props) {
           {citations && citations.length > 0 && (
             <div
               style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "6px",
-                marginTop: "12px",
-                paddingTop: "10px",
+                marginTop: "14px",
+                paddingTop: "12px",
                 borderTop: "1px solid var(--airbnb-hairline-soft)",
               }}
             >
-              <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--airbnb-muted)", textTransform: "uppercase", letterSpacing: "0.5px", alignSelf: "center" }}>
+              <p style={{ fontSize: "10px", fontWeight: 700, color: "var(--airbnb-muted)", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: "8px" }}>
                 Sources
-              </span>
-              {citations.map((c, i) => (
-                <CitationBadge key={i} citation={c} />
-              ))}
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                {citations.map((c, i) => (
+                  <CitationBadge key={i} citation={c} />
+                ))}
+              </div>
             </div>
           )}
         </div>

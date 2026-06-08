@@ -21,6 +21,7 @@ interface DocQAStore {
   setApiDocuments: (docs: ApiDocument[]) => void;
   addApiDocument: (doc: ApiDocument) => void;
   updateApiDocument: (doc: ApiDocument) => void;
+  removeApiDocument: (id: string) => void;
 
   /* ── Conversations (live from API) ──────────────────────── */
   conversations: ApiConversation[];
@@ -85,6 +86,9 @@ export const useStore = create<DocQAStore>((set) => ({
   addApiDocument: (doc) => set((s) => ({ apiDocuments: [doc, ...s.apiDocuments] })),
   updateApiDocument: (doc) => set((s) => ({
     apiDocuments: s.apiDocuments.map((d) => d.id === doc.id ? doc : d),
+  })),
+  removeApiDocument: (id) => set((s) => ({
+    apiDocuments: s.apiDocuments.filter((d) => d.id !== id),
   })),
 
   /* Conversations */

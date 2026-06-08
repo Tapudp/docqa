@@ -311,7 +311,7 @@ export default function WorkspacePage() {
                 maxWidth: "720px",
                 margin: "0 auto",
                 display: "flex",
-                alignItems: "flex-end",
+                alignItems: "center",
                 gap: "10px",
                 background: "var(--airbnb-canvas)",
                 border: "1px solid var(--airbnb-hairline)",

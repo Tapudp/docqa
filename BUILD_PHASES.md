@@ -175,9 +175,30 @@ Once the core product works end-to-end:
 | Phase | What you get | Status |
 |-------|-------------|--------|
 | 0 — Frontend scaffold | Full UI with mock data | ✅ Done |
-| 1 — Backend + Auth | Real login, JWT, PostgreSQL | 🔲 Next |
-| 2 — File Upload | Upload PDFs to MinIO | 🔲 |
-| 3 — Parsing Pipeline | PaddleOCR + coverage badges live | 🔲 |
-| 4 — Chunking + Indexing | BM25 + vector, doc marked ready | 🔲 |
-| 5 — LLM Chat | Real streamed answers + citations | 🔲 |
-| 6 — PDF.js Viewer | Click citation → see the page | 🔲 |
+| 1 — Backend + Auth | Real login, JWT, PostgreSQL | ✅ Done |
+| 2 — File Upload | Upload PDFs to MinIO | ✅ Done |
+| 3 — Parsing Pipeline | pypdf parser + Celery worker | ✅ Done |
+| 4 — Chunking + Indexing | pgvector + fastembed, doc marked ready | ✅ Done |
+| 5 — LLM Chat | Real streamed answers + filtered citations | ✅ Done |
+| 6 — PDF.js Viewer | Click citation → see the page | 🔲 Next |
+| 7 — LLM / Ollama Settings UI | Admin page: pick model from installed Ollama list | 🔲 |
+| 8 — Auth Providers | SSO (Keycloak / Google), RBAC roles | 🔲 |
+| 9 — Admin Dashboard | Usage analytics, user management, storage quotas | 🔲 |
+
+---
+
+## Phase 7 — LLM / Ollama Settings UI
+
+**Goal:** Admin page where you configure which LLM the workspace uses — lists models already installed on the server's Ollama instance so you never need to touch `.env` again.
+
+### What gets built
+- **Settings API** — `GET /api/admin/llm/models` calls Ollama's `/api/tags` and returns installed models; `PATCH /api/admin/llm` saves chosen model + provider to DB config
+- **Settings page** — `/settings` route (admin only): dropdown of available Ollama models with size + family info, provider switcher (Ollama / OpenAI / Anthropic), save button
+- **Runtime config** — LLM client reads model from DB config at request time, so changes take effect immediately without restart
+
+### End-of-phase checkpoint
+```
+✓ /settings shows list of models installed on the server's Ollama
+✓ Selecting a different model and saving changes what the chat uses — no restart
+✓ Non-admin users cannot access /settings
+```

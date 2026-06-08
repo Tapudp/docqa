@@ -91,6 +91,9 @@ export const api = {
 
     get: (documentId: string) =>
       request<ApiDocument>(`/api/documents/${documentId}`),
+
+    delete: (documentId: string) =>
+      request<void>(`/api/documents/${documentId}`, { method: "DELETE" }),
   },
 
   chat: {

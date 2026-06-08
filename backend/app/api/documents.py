@@ -121,3 +121,29 @@ async def get_document(
 
     await _require_workspace_member(doc.workspace_id, current_user, db)
     return doc
+
+
+@router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document(
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Document).where(Document.id == document_id))
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    await _require_workspace_member(doc.workspace_id, current_user, db)
+
+    # Delete from MinIO — ignore if already gone
+    try:
+        await minio_client.delete_object(doc.storage_key)
+        # Also clean up parsed pages if they exist
+        pages_key = f"workspaces/{doc.workspace_id}/documents/{doc.id}/pages.json"
+        await minio_client.delete_object(pages_key)
+    except Exception:
+        pass
+
+    await db.delete(doc)
+    await db.commit()

@@ -56,6 +56,9 @@ export default function Sidebar() {
     >
       {/* Workspace switcher */}
       <div style={{ padding: "14px 12px 10px" }}>
+        <p style={{ fontSize: "10px", fontWeight: 700, color: "var(--airbnb-muted)", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: "6px", paddingLeft: "2px" }}>
+          Workspace
+        </p>
         <button
           onClick={() => setShowWorkspaceMenu((v) => !v)}
           style={{
@@ -116,8 +119,10 @@ export default function Sidebar() {
         )}
       </div>
 
+      <div style={{ height: "1px", background: "var(--airbnb-hairline)", margin: "0 12px" }} />
+
       {/* New conversation button */}
-      <div style={{ padding: "0 12px 12px" }}>
+      <div style={{ padding: "12px 12px 10px" }}>
         <button
           onClick={handleNewConversation}
           style={{
