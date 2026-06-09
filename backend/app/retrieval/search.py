@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -24,7 +25,8 @@ async def hybrid_search(
     query: str,
     top_k: int = 6,
 ) -> list[SearchResult]:
-    query_vec = embed_texts([query])[0]
+    loop = asyncio.get_running_loop()
+    query_vec = await loop.run_in_executor(None, lambda: embed_texts([query])[0])
     vec_literal = "[" + ",".join(str(x) for x in query_vec) + "]"
 
     # Vector similarity (cosine) + PostgreSQL full-text search combined via RRF
