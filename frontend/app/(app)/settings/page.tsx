@@ -638,7 +638,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
+function Th({ children }: { children?: React.ReactNode }) {
   return (
     <th style={{ padding: "8px 0", textAlign: "left", fontSize: "11px", fontWeight: 700, color: "var(--airbnb-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
       {children}
