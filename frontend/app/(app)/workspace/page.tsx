@@ -124,13 +124,10 @@ export default function WorkspacePage() {
     setIsStreaming(true);
     clearStreaming();
 
-    let finalCitations: Citation[] = [];
-
     await api.chat.streamChatFetch(
       convId,
       text,
       (citations) => {
-        finalCitations = citations as Citation[];
         setStreamingCitations(citations as Citation[]);
       },
       (token) => {

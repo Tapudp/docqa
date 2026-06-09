@@ -1,5 +1,5 @@
 # NpuDen DocQA — Kubernetes Deployment Guide
-# Target server: nid-practice · 64 cores · 756 GB RAM · Nvidia A40 (48 GB VRAM)
+# Target server: nid-practice · 64 cores · 756 GB RAM · Nvidia A40
 
 > **What's different from DEPLOY.md?**  
 > `DEPLOY.md` covers Docker Compose (local dev / single Linux server).  
@@ -13,16 +13,16 @@
 | | |
 |---|---|
 | Node | `nid-practice` |
+| Node IP | `172.16.200.116` |
 | CPU | 64 cores |
 | RAM | 756 GB |
 | GPU | Nvidia A40 — 48 GB VRAM |
 | Ollama pod | `ollama-5dccdd8658-6w2tm` in namespace `ai-services` |
-| Ollama pod IP | `172.16.200.116` |
+| Ollama endpoint | `http://ollama.ai-services.svc.cluster.local:11434` |
 | Repo | `git@github.com:Tapudp/docqa.git` |
 
-**Model recommendation for A40:**  
-`qwen2.5:32b` (~20 GB) — excellent quality, leaves 28 GB headroom.  
-`llama3.1:70b` (~40 GB) — best quality, fits in A40 VRAM. Slower first token.
+**Active model on this server:** `gemma4:26b` (17 GB — already pulled, confirmed running).  
+Other options for A40: `qwen2.5:32b` (~20 GB), `llama3.1:70b` (~40 GB).
 
 ---
 
@@ -33,26 +33,39 @@
 | `postgres` | `pgvector/pgvector:pg16` | `docqa` |
 | `redis` | `redis:7-alpine` | `docqa` |
 | `minio` | `minio/minio:latest` | `docqa` |
-| `api` | `ghcr.io/tapudp/docqa-api:latest` | `docqa` |
-| `celery-worker` | `ghcr.io/tapudp/docqa-api:latest` | `docqa` |
-| `frontend` | `ghcr.io/tapudp/docqa-frontend:latest` | `docqa` |
+| `api` | `docker.io/library/docqa-api:latest` *(local, no registry)* | `docqa` |
+| `celery-worker` | `docker.io/library/docqa-api:latest` *(local, no registry)* | `docqa` |
+| `frontend` | `docker.io/library/docqa-frontend:latest` *(local, no registry)* | `docqa` |
 | `ollama` | already running | `ai-services` |
+
+Images are built directly on the server with Docker and imported into containerd — no registry needed.
+
+**Access URLs (once deployed):**
+- Frontend: `http://172.16.200.116:30300`
+- API: `http://172.16.200.116:30800`
 
 ---
 
-## Step 1 — Expose Ollama as a stable Service
+## Step 1 — Expose Ollama as a stable Service ✅ Done
 
-The pod IP (`172.16.200.116`) changes on pod restarts. Create a stable Service that routes to it.
+Pod IP (`172.16.200.116`) changes on restarts — a ClusterIP Service makes the address stable.
 
-```bash
-# Check if a Service already exists
-kubectl get svc -n ai-services
+**Confirmed:** pod label is `app=ollama`, service created, endpoint verified:
+
+```
+NAME     ENDPOINTS              AGE
+ollama   172.16.200.116:11434   ✓
 ```
 
-If no Service for Ollama exists, create one:
+The Ollama URL for DocQA config:
+```
+http://ollama.ai-services.svc.cluster.local:11434
+```
 
-```yaml
-# kubectl apply -f -
+If you ever need to recreate this service:
+
+```bash
+cat <<'EOF' > /tmp/ollama-svc.yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -60,86 +73,113 @@ metadata:
   namespace: ai-services
 spec:
   selector:
-    app: ollama          # adjust if the label key/value is different
+    app: ollama
   ports:
     - port: 11434
       targetPort: 11434
   type: ClusterIP
-```
-
-```bash
-# Verify the selector matches the pod
-kubectl get pod ollama-5dccdd8658-6w2tm -n ai-services --show-labels
-# If label is different from "app=ollama", update the selector above
-
-# Test reachability from inside the cluster
-kubectl run curl-test --image=curlimages/curl --restart=Never --rm -it \
-  -- curl http://ollama.ai-services.svc.cluster.local:11434/api/tags
-```
-
-The Ollama URL for DocQA config will be:
-```
-http://ollama.ai-services.svc.cluster.local:11434
+EOF
+kubectl apply -f /tmp/ollama-svc.yaml
+kubectl get endpoints ollama -n ai-services
 ```
 
 ---
 
-## Step 2 — Pull the model you want
+## Step 2 — Model ✅ Done
+
+`gemma4:26b` is already pulled (17 GB, confirmed on this server). No action needed.
 
 ```bash
-kubectl exec -it ollama-5dccdd8658-6w2tm -n ai-services -- \
-  ollama pull qwen2.5:32b
-# or:
-# ollama pull llama3.1:70b   (40 GB — fits in A40)
-# ollama pull qwen2.5:14b    (9 GB  — fastest, good for testing)
+# Verify anytime:
+kubectl exec -it ollama-5dccdd8658-6w2tm -n ai-services -- ollama list
+```
+
+To pull additional models later:
+```bash
+kubectl exec -it ollama-5dccdd8658-6w2tm -n ai-services -- ollama pull llama3.1:70b
 ```
 
 ---
 
-## Step 3 — Build and push images
+## Step 3 — Clone repo and build images on the server
 
-The repo has a single root `Dockerfile` with two named targets — `api` and `frontend`. Build both from the repo root with one context.
+No container registry needed. Build directly on the server with Docker, then import into containerd so Kubernetes can use them with `imagePullPolicy: Never`.
+
+### 3a. Set up SSH access for GitHub (one-time)
 
 ```bash
-# On your MacBook (or any machine with Docker + access to the registry)
+# Generate a deploy key
+ssh-keygen -t ed25519 -C "nid-practice-deploy" -f ~/.ssh/id_ed25519 -N ""
 
-# Authenticate to GitHub Container Registry
-echo $GITHUB_TOKEN | docker login ghcr.io -u Tapudp --password-stdin
+# Print the public key — copy this entire output
+cat ~/.ssh/id_ed25519.pub
+```
 
-# Pull latest code
-git clone git@github.com:Tapudp/docqa.git   # first time
-# or: git pull                               # if already cloned
+Go to **github.com → Settings → SSH and GPG keys → New SSH key**:
+- Title: `nid-practice`
+- Key type: **Authentication key**
+- Paste the output from `cat ~/.ssh/id_ed25519.pub`
 
-cd docqa
+```bash
+# Verify it works
+ssh -T git@github.com
+# Expected: Hi Tapudp! You've successfully authenticated...
+```
 
-# Build API image  (used for both api and celery-worker pods)
-docker build --target api \
-  -t ghcr.io/tapudp/docqa-api:latest \
-  .
+### 3b. Clone and build
 
-# Build frontend image
-# Replace the URL with your actual Ingress / NodePort hostname for the API
+```bash
+git clone git@github.com:Tapudp/docqa.git && cd docqa
+
+# API image — also used for the celery-worker pods
+docker build --target api -t docqa-api:latest .
+
+# Frontend — NEXT_PUBLIC_API_URL is baked into the JS bundle at build time
+# It must match what the browser uses to reach the API
 docker build --target frontend \
-  --build-arg NEXT_PUBLIC_API_URL=http://api.docqa.nid.local \
-  -t ghcr.io/tapudp/docqa-frontend:latest \
-  .
-
-# Push both
-docker push ghcr.io/tapudp/docqa-api:latest
-docker push ghcr.io/tapudp/docqa-frontend:latest
+  --build-arg NEXT_PUBLIC_API_URL=http://172.16.200.116:30800 \
+  -t docqa-frontend:latest .
 ```
 
-> **Note on `NEXT_PUBLIC_API_URL`:** this value is compiled into the Next.js JS bundle at build time — it is not a runtime env var. Set it to whatever hostname/IP the browser will use to reach the API. If you change it later, rebuild the frontend image.
+> First build takes ~10 min (downloading base images + installing packages). Subsequent rebuilds are fast thanks to Docker layer caching.
 
-> If your registry is private, you'll need an `imagePullSecret`. See the note at the bottom.
+### 3c. Import into containerd
+
+Kubernetes uses containerd, not the Docker daemon. Import both images into the `k8s.io` namespace so Kubernetes can find them.
+
+```bash
+docker save docqa-api:latest      | sudo ctr -n k8s.io images import -
+docker save docqa-frontend:latest | sudo ctr -n k8s.io images import -
+
+# Verify both are present
+sudo ctr -n k8s.io images ls | grep docqa
+```
+
+Expected output:
+```
+docker.io/library/docqa-api:latest        ...
+docker.io/library/docqa-frontend:latest   ...
+```
+
+> containerd prefixes unqualified names with `docker.io/library/`. The Kubernetes manifests below use `docker.io/library/docqa-api:latest` to match exactly.
+
+---
+
+## Step 4 — Generate a JWT secret
+
+```bash
+openssl rand -hex 32
+# → copy the 64-character output, paste it into the Secret below
+```
 
 ---
 
 ## Step 5 — Apply all Kubernetes manifests
 
-Save the following as one file and run `kubectl apply -f docqa-k8s.yaml`.
+Save the following as `docqa-k8s.yaml` and apply it.
 
-```yaml
+```bash
+cat <<'EOF' > /tmp/docqa-k8s.yaml
 # ── Namespace ─────────────────────────────────────────────────
 apiVersion: v1
 kind: Namespace
@@ -148,7 +188,7 @@ metadata:
 
 ---
 # ── Secret — sensitive values ─────────────────────────────────
-# Generate a JWT secret:  openssl rand -hex 32
+# Replace JWT_SECRET with the output of: openssl rand -hex 32
 apiVersion: v1
 kind: Secret
 metadata:
@@ -175,11 +215,11 @@ data:
   MINIO_BUCKET: "docqa"
   LLM_PROVIDER: "ollama"
   LLM_BASE_URL: "http://ollama.ai-services.svc.cluster.local:11434"
-  LLM_MODEL: "qwen2.5:32b"
+  LLM_MODEL: "gemma4:26b"
   LLM_API_KEY: ""
   ALLOW_REGISTRATION: "true"
   APP_NAME: "NpuDen DocQA"
-  CORS_ORIGINS: '["http://frontend.docqa.nid.local","http://localhost:3000"]'
+  CORS_ORIGINS: '["http://172.16.200.116:30300","http://localhost:3000"]'
 
 ---
 # ── PersistentVolumeClaims ────────────────────────────────────
@@ -431,7 +471,8 @@ spec:
         kubernetes.io/hostname: nid-practice
       containers:
         - name: api
-          image: ghcr.io/tapudp/docqa-api:latest
+          image: docker.io/library/docqa-api:latest
+          imagePullPolicy: Never
           command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
           envFrom:
             - configMapRef:
@@ -461,11 +502,13 @@ metadata:
   name: api
   namespace: docqa
 spec:
+  type: NodePort
   selector:
     app: api
   ports:
     - port: 8000
       targetPort: 8000
+      nodePort: 30800
 
 ---
 # ── Celery worker ─────────────────────────────────────────────
@@ -489,7 +532,8 @@ spec:
         kubernetes.io/hostname: nid-practice
       containers:
         - name: worker
-          image: ghcr.io/tapudp/docqa-api:latest
+          image: docker.io/library/docqa-api:latest
+          imagePullPolicy: Never
           command:
             - celery
             - -A
@@ -541,7 +585,8 @@ spec:
         kubernetes.io/hostname: nid-practice
       containers:
         - name: frontend
-          image: ghcr.io/tapudp/docqa-frontend:latest
+          image: docker.io/library/docqa-frontend:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 3000
           resources:
@@ -565,54 +610,15 @@ metadata:
   name: frontend
   namespace: docqa
 spec:
+  type: NodePort
   selector:
     app: frontend
   ports:
     - port: 3000
       targetPort: 3000
-
----
-# ── Ingress ───────────────────────────────────────────────────
-# Requires an ingress controller (nginx-ingress or traefik) on the cluster.
-# Replace hostnames with your actual DNS or /etc/hosts entries.
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: docqa-ingress
-  namespace: docqa
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "10g"          # bulk upload support
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"       # streaming responses
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: docqa.nid.local           # ← frontend
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: frontend
-                port:
-                  number: 3000
-    - host: api.docqa.nid.local       # ← backend API
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: api
-                port:
-                  number: 8000
-```
-
-Apply it:
-
-```bash
-kubectl apply -f docqa-k8s.yaml
+      nodePort: 30300
+EOF
+kubectl apply -f /tmp/docqa-k8s.yaml
 ```
 
 ---
@@ -645,7 +651,7 @@ kubectl exec -n docqa deploy/api -- curl -s http://localhost:8000/health
 
 Open the frontend in your browser:
 ```
-http://docqa.nid.local     (or the node IP + port if no ingress)
+http://172.16.200.116:30300
 ```
 
 The **first account registered becomes admin** automatically. After that, set `ALLOW_REGISTRATION=false` in the ConfigMap if you want invite-only access.
@@ -661,64 +667,35 @@ kubectl exec -n docqa deploy/api -- \
 
 You should see JSON listing the pulled models. If this fails, check:
 1. Network policy — does `docqa` namespace have egress to `ai-services`?
-2. Run `kubectl get svc -n ai-services` to confirm the Service exists and the selector matches
-
----
-
-## DNS / no ingress controller fallback
-
-If you don't have an ingress controller, expose via NodePort instead:
-
-```bash
-kubectl patch svc frontend -n docqa -p '{"spec":{"type":"NodePort"}}'
-kubectl patch svc api      -n docqa -p '{"spec":{"type":"NodePort"}}'
-kubectl get svc -n docqa   # shows the NodePort numbers
-```
-
-Then access via `http://<node-ip>:<nodeport>`. Update the frontend image's `NEXT_PUBLIC_API_URL` build arg to match the API NodePort URL before building.
+2. Run `kubectl get svc -n ai-services` to confirm the Service exists and the selector matches.
 
 ---
 
 ## Updating after a code push
 
-All builds use the root `Dockerfile` — run everything from the repo root.
+All builds happen on the server — no registry involved.
 
 ```bash
+cd ~/docqa
 git pull
 
-# Rebuild API + restart
-docker build --target api \
-  -t ghcr.io/tapudp/docqa-api:latest . && \
-  docker push ghcr.io/tapudp/docqa-api:latest
+# ── API changed ──────────────────────────────────────────────
+docker build --target api -t docqa-api:latest .
+docker save docqa-api:latest | sudo ctr -n k8s.io images import -
 kubectl rollout restart deployment/api deployment/celery-worker -n docqa
 
-# Rebuild frontend + restart (only needed if frontend code changed)
+# ── Frontend changed ─────────────────────────────────────────
 docker build --target frontend \
-  --build-arg NEXT_PUBLIC_API_URL=http://api.docqa.nid.local \
-  -t ghcr.io/tapudp/docqa-frontend:latest . && \
-  docker push ghcr.io/tapudp/docqa-frontend:latest
+  --build-arg NEXT_PUBLIC_API_URL=http://172.16.200.116:30800 \
+  -t docqa-frontend:latest .
+docker save docqa-frontend:latest | sudo ctr -n k8s.io images import -
 kubectl rollout restart deployment/frontend -n docqa
+
+# Watch rollout
+kubectl rollout status deployment/api -n docqa
 ```
 
----
-
-## Private registry — imagePullSecret
-
-If `ghcr.io/tapudp/docqa` is a private repo:
-
-```bash
-kubectl create secret docker-registry ghcr-secret \
-  --docker-server=ghcr.io \
-  --docker-username=Tapudp \
-  --docker-password=$GITHUB_TOKEN \
-  -n docqa
-```
-
-Add to each Deployment's `spec.template.spec`:
-```yaml
-imagePullSecrets:
-  - name: ghcr-secret
-```
+> Only rebuild what changed. If you only touched the backend, skip the frontend build and vice versa.
 
 ---
 
@@ -736,4 +713,4 @@ With your A40 + 756 GB RAM, headroom is generous. Adjust replicas freely.
 | frontend | 1 | 1 GB | |
 | **Total** | **~44 cores** | **~58 GB** | **leaves >700 GB for Ollama** |
 
-Ollama with `qwen2.5:32b` uses ~20 GB VRAM and ~40 GB RAM. The A40's 48 GB VRAM fits it fully — all layers stay on GPU, inference is fast.
+`gemma4:26b` uses ~17 GB VRAM. The A40's 48 GB fits it fully — all layers stay on GPU.

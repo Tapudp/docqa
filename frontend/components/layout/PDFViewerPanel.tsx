@@ -218,7 +218,7 @@ export default function RightPanel() {
               </div>
               <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--airbnb-ink)", margin: 0 }}>Preview not available</p>
               <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: 0, lineHeight: 1.5 }}>
-                {pdfDoc.filename.split(".").pop()?.toUpperCase()} files can't be previewed here.<br />The document is indexed and available for Q&amp;A.
+                {pdfDoc.filename.split(".").pop()?.toUpperCase()} files cannot be previewed here.<br />The document is indexed and available for Q&amp;A.
               </p>
               <button onClick={closePdf} style={{ marginTop: "4px", height: "32px", padding: "0 16px", background: "transparent", border: "1px solid var(--airbnb-hairline)", borderRadius: "var(--radius-sm)", fontSize: "12px", color: "var(--airbnb-body)", cursor: "pointer", fontFamily: "inherit" }}>
                 Close
