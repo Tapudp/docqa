@@ -207,6 +207,23 @@ export default function RightPanel() {
                 Click a citation badge to open the PDF at that page
               </p>
             </div>
+          ) : pdfDoc.mime_type !== "application/pdf" ? (
+            /* Non-PDF file — viewer not supported */
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px", padding: "32px", textAlign: "center" }}>
+              <div style={{ width: "52px", height: "52px", borderRadius: "var(--radius-full)", background: "var(--airbnb-surface-strong)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="#c1c1c1" strokeWidth="1.5" fill="none" />
+                  <path d="M14 2v6h6M9 13h6M9 17h4" stroke="#c1c1c1" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </div>
+              <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--airbnb-ink)", margin: 0 }}>Preview not available</p>
+              <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: 0, lineHeight: 1.5 }}>
+                {pdfDoc.filename.split(".").pop()?.toUpperCase()} files can't be previewed here.<br />The document is indexed and available for Q&amp;A.
+              </p>
+              <button onClick={closePdf} style={{ marginTop: "4px", height: "32px", padding: "0 16px", background: "transparent", border: "1px solid var(--airbnb-hairline)", borderRadius: "var(--radius-sm)", fontSize: "12px", color: "var(--airbnb-body)", cursor: "pointer", fontFamily: "inherit" }}>
+                Close
+              </button>
+            </div>
           ) : (
             <>
               {/* Doc header */}
