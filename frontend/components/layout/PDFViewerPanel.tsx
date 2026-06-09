@@ -39,8 +39,8 @@ export default function RightPanel() {
   return (
     <aside
       style={{
-        width: "340px",
-        minWidth: "340px",
+        width: "420px",
+        minWidth: "420px",
         height: "100%",
         background: "var(--airbnb-canvas)",
         borderLeft: "1px solid var(--airbnb-hairline)",
