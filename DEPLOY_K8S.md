@@ -46,6 +46,27 @@ Images are built directly on the server with Docker and imported into containerd
 
 ---
 
+## Running services
+
+| Pod | Replicas | Image | Port | External access | Notes |
+|-----|----------|-------|------|-----------------|-------|
+| `postgres` | 1 | `pgvector/pgvector:pg16` | 5432 | None (cluster-internal) | Stores users, docs, chunks, conversations |
+| `redis` | 1 | `redis:7-alpine` | 6379 | None (cluster-internal) | Celery task queue broker |
+| `minio` | 1 | `minio/minio:latest` | 9000 / 9001 | None (cluster-internal) | Object storage for uploaded files; console on :9001 |
+| `api` | 2 | `docker.io/library/docqa-api:latest` | 8000 | `http://172.16.200.116:30800` | FastAPI backend; 4 uvicorn workers each |
+| `celery-worker` | 4 | `docker.io/library/docqa-api:latest` | — | None | Background parse + index pipeline; 1 concurrency each |
+| `frontend` | 1 | `docker.io/library/docqa-frontend:latest` | 3000 | `http://172.16.200.116:30300` | Next.js 14 app |
+| `ollama` | 1 (pre-existing) | — | 11434 | Via ClusterIP service in `ai-services` ns | `gemma4:26b` loaded; accessed at `ollama.ai-services.svc.cluster.local:11434` |
+
+**Quick health check:**
+```bash
+kubectl get pods -n docqa
+curl -s http://172.16.200.116:30800/health
+# {"status": "ok", "service": "NpuDen DocQA"}
+```
+
+---
+
 ## Step 1 — Expose Ollama as a stable Service ✅ Done
 
 Pod IP (`172.16.200.116`) changes on restarts — a ClusterIP Service makes the address stable.
