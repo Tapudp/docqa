@@ -7,12 +7,20 @@ interface Props {
   citation: Citation;
 }
 
+function formatPageLabel(pages: number[]): string {
+  if (pages.length === 0) return "Page 1";
+  if (pages.length === 1) return `Page ${pages[0]}`;
+  const sorted = [...pages].sort((a, b) => a - b);
+  const isConsecutive = sorted.every((p, i) => i === 0 || p === sorted[i - 1] + 1);
+  return isConsecutive
+    ? `Pages ${sorted[0]}–${sorted[sorted.length - 1]}`
+    : `Pages ${sorted.join(", ")}`;
+}
+
 export default function CitationBadge({ citation }: Props) {
   const openPdf = useStore((s) => s.openPdf);
   const firstPage = citation.page_numbers[0] ?? 1;
-  const pageLabel = citation.page_numbers.length > 1
-    ? `pp. ${citation.page_numbers.join(", ")}`
-    : `p. ${firstPage}`;
+  const pageLabel = formatPageLabel(citation.page_numbers);
 
   // Strip extension for display, keep full name for tooltip
   const displayName = citation.filename.replace(/\.[^/.]+$/, "");
