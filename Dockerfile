@@ -36,6 +36,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ .
 
+# Pre-download the embedding model so pods never need outbound internet at runtime
+RUN python3 -c "from fastembed import TextEmbedding; list(TextEmbedding('BAAI/bge-small-en-v1.5').embed(['warmup']))"
+
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
 
