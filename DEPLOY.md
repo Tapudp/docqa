@@ -1,5 +1,8 @@
 # NpuDen DocQA — Deployment Guide
 
+> **Deploying to Kubernetes?** This guide covers Docker Compose (local dev + single server).  
+> For Kubernetes (with GPU, multi-pod, production cluster), see [DEPLOY_K8S.md](./DEPLOY_K8S.md).
+
 Deploy the full stack on any Linux server (or your local Mac) with Docker and Ollama.
 
 ---
@@ -157,6 +160,19 @@ The admin can then:
 ## Per-workspace LLM override
 
 Each workspace can use a different LLM than the global default. Set it in **Settings → Workspaces & Members → [workspace] → LLM Override**. Leave the override empty to inherit the global config.
+
+---
+
+## Dockerfile layout
+
+The repo has two Dockerfiles — they serve different purposes:
+
+| File | Used by | Purpose |
+|------|---------|---------|
+| `backend/Dockerfile` | `docker compose` | Local dev — mounts source code for hot reload |
+| `Dockerfile` (root) | Kubernetes builds | Production — two named targets: `--target api` and `--target frontend` |
+
+If you're on Docker Compose, you never need the root `Dockerfile`. It only comes into play when building images to push to a registry for Kubernetes.
 
 ---
 

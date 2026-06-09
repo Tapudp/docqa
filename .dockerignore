@@ -1,0 +1,21 @@
+.git
+.DS_Store
+.claude
+
+# backend
+backend/.env*
+backend/__pycache__
+backend/**/__pycache__
+backend/*.pyc
+backend/.pytest_cache
+
+# frontend
+frontend/node_modules
+frontend/.next
+frontend/.env*
+frontend/*.log
+frontend/tsconfig.tsbuildinfo
+
+# docs / misc
+*.md
+npuden-docqa-*.md
