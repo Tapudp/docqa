@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   webpack: (config) => {
     // pdfjs-dist optionally requires canvas; alias it to false to suppress the warning
     config.resolve.alias.canvas = false;

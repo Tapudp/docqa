@@ -106,12 +106,6 @@ export const api = {
     listMessages: (conversationId: string) =>
       request<ApiMessage[]>(`/api/conversations/${conversationId}/messages`),
 
-    streamChat: (_conversationId: string, _question: string): EventSource => {
-      const _token = getToken();
-      // Use fetch-based SSE via a custom helper — EventSource doesn't support POST
-      // We return a controller that mimics EventSource events via callbacks
-      throw new Error("use streamChatFetch instead");
-    },
 
     deleteConversation: (conversationId: string) =>
       request<void>(`/api/conversations/${conversationId}`, { method: "DELETE" }),
