@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useState, useEffect } from "react";
 import { useStore } from "@/lib/store";
 import DocumentCard from "@/components/documents/DocumentCard";
 import type { ApiDocument } from "@/lib/types";
@@ -22,6 +23,10 @@ export default function RightPanel() {
     pdfDocId, pdfPage, setPdfPage, openPdf, closePdf,
     setUploadOpen,
   } = useStore();
+
+  const [zoom, setZoom] = useState(1);
+
+  useEffect(() => { setZoom(1); }, [pdfDocId]);
 
   const activeWorkspace = apiWorkspaces.find((w) => w.id === activeWorkspaceId);
   const memberRole = activeWorkspace?.member_role ?? "viewer";
@@ -275,7 +280,7 @@ export default function RightPanel() {
                 </button>
               </div>
 
-              {/* Page nav */}
+              {/* Page nav + zoom */}
               <div
                 style={{
                   padding: "8px 14px",
@@ -286,12 +291,13 @@ export default function RightPanel() {
                   flexShrink: 0,
                 }}
               >
+                {/* Page controls */}
                 <NavBtn
                   dir="prev"
                   disabled={pdfPage <= 1}
                   onClick={() => setPdfPage(Math.max(1, pdfPage - 1))}
                 />
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                   <input
                     type="number"
                     min={1}
@@ -320,6 +326,41 @@ export default function RightPanel() {
                   disabled={pdfDoc.total_pages != null && pdfPage >= pdfDoc.total_pages}
                   onClick={() => setPdfPage(Math.min(pdfDoc.total_pages ?? 999, pdfPage + 1))}
                 />
+
+                {/* Divider */}
+                <div style={{ width: "1px", height: "16px", background: "var(--airbnb-hairline)", flexShrink: 0 }} />
+
+                {/* Zoom controls */}
+                <ZoomBtn disabled={zoom <= 0.5} onClick={() => setZoom((z) => Math.max(0.5, parseFloat((z - 0.25).toFixed(2))))}>
+                  <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                    <path d="M2 4.5h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </ZoomBtn>
+                <button
+                  onClick={() => setZoom(1)}
+                  title="Reset zoom"
+                  style={{
+                    height: "22px",
+                    minWidth: "38px",
+                    padding: "0 4px",
+                    background: "transparent",
+                    border: "1px solid var(--airbnb-hairline)",
+                    borderRadius: "var(--radius-xs)",
+                    fontSize: "10px",
+                    fontWeight: 600,
+                    color: "var(--airbnb-ink)",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    letterSpacing: "0.01em",
+                  }}
+                >
+                  {Math.round(zoom * 100)}%
+                </button>
+                <ZoomBtn disabled={zoom >= 2.5} onClick={() => setZoom((z) => Math.min(2.5, parseFloat((z + 0.25).toFixed(2))))}>
+                  <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                    <path d="M4.5 2v5M2 4.5h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </ZoomBtn>
               </div>
 
               <PDFViewer
@@ -327,6 +368,7 @@ export default function RightPanel() {
                 page={pdfPage}
                 onPageChange={setPdfPage}
                 totalPages={pdfDoc.total_pages ?? null}
+                zoom={zoom}
               />
             </>
           )}
@@ -406,6 +448,40 @@ function TabButton({
           }}
         />
       )}
+    </button>
+  );
+}
+
+function ZoomBtn({
+  disabled,
+  onClick,
+  children,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        width: "22px",
+        height: "22px",
+        borderRadius: "var(--radius-xs)",
+        background: "var(--airbnb-canvas)",
+        border: "1px solid var(--airbnb-hairline)",
+        cursor: disabled ? "not-allowed" : "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: disabled ? 0.35 : 1,
+        color: "var(--airbnb-ink)",
+        flexShrink: 0,
+        transition: "background-color 0.1s ease",
+      }}
+    >
+      {children}
     </button>
   );
 }

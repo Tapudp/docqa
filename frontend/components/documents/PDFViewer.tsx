@@ -12,9 +12,10 @@ interface Props {
   page: number;
   onPageChange: (page: number) => void;
   totalPages: number | null;
+  zoom?: number;
 }
 
-export default function PDFViewer({ documentId, page, onPageChange, totalPages }: Props) {
+export default function PDFViewer({ documentId, page, onPageChange, totalPages, zoom = 1 }: Props) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,8 +92,10 @@ export default function PDFViewer({ documentId, page, onPageChange, totalPages }
 
   const maxPage = numPages ?? totalPages ?? 999;
 
+  const pageWidth = Math.floor((containerWidth - 24) * zoom);
+
   return (
-    <div ref={containerRef} style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "12px", background: "#f0f0f0" }}>
+    <div ref={containerRef} style={{ flex: 1, overflowY: "auto", overflowX: zoom > 1 ? "auto" : "hidden", padding: "12px", background: "#f0f0f0" }}>
       <Document
         file={blobUrl}
         onLoadSuccess={({ numPages: n }) => {
@@ -103,9 +106,9 @@ export default function PDFViewer({ documentId, page, onPageChange, totalPages }
         loading={null}
       >
         <Page
-          key={`${documentId}-${page}`}
+          key={`${documentId}-${page}-${zoom}`}
           pageNumber={Math.min(page, maxPage)}
-          width={containerWidth - 24}
+          width={pageWidth}
           renderTextLayer
           renderAnnotationLayer
           loading={
