@@ -40,11 +40,11 @@ graph TB
     end
 
     subgraph Storage["Storage Layer"]
-        PG[(PostgreSQL)]
-        ES[(Elasticsearch)]
-        CHROMA[(ChromaDB)]
-        MINIO[(MinIO)]
-        REDIS[(Redis)]
+        PG[(PostgreSQL + pgvector\nchunks · embeddings · FTS)]
+        MINIO[(MinIO\noriginal files)]
+        REDIS[(Redis\nCelery broker)]
+        ES[(Elasticsearch\nPhase 4+)]
+        CHROMA[(ChromaDB / Milvus\nPhase 4+)]
     end
 
     subgraph LLM["LLM Providers"]
@@ -280,14 +280,14 @@ classDiagram
 flowchart TD
     QUERY["🔍 User: 'What does Rule 155 say?'"]
 
-    subgraph BM25["BM25 Search (Elasticsearch)"]
-        BM25_Q["Query: 'Rule 155'"]
-        BM25_R["Result: Exact text match<br/>Page 36, Score: 0.95"]
+    subgraph BM25["BM25 / Full-text Search (PostgreSQL FTS)"]
+        BM25_Q["plainto_tsquery('Rule 155')"]
+        BM25_R["Result: Exact text match<br/>Page 36, ts_rank score"]
     end
 
-    subgraph Vector["Vector Search (ChromaDB)"]
-        VEC_Q["Query: embed('What does Rule 155 say?')"]
-        VEC_R["Result: Semantic match<br/>Pages 36-37, Score: 0.82"]
+    subgraph Vector["Vector Search (pgvector)"]
+        VEC_Q["embed via BAAI/bge-small-en-v1.5<br/>cosine distance in PostgreSQL"]
+        VEC_R["Result: Semantic match<br/>Pages 36-37, cosine score"]
     end
 
     subgraph PageIdx["PageIndex (Optional)"]
@@ -505,49 +505,45 @@ flowchart TD
 sequenceDiagram
     actor User
     participant FE as Frontend
-    participant WS as WebSocket
-    participant API as Chat Service
+    participant API as Chat Service (FastAPI)
     participant RET as Retrieval Engine
-    participant ES as Elasticsearch
-    participant VDB as ChromaDB
-    participant LLM as LLM Router
+    participant PG as PostgreSQL (FTS + pgvector)
+    participant LLM as LLM Client
     participant OLL as Ollama
 
     User->>FE: "What does Rule 155 say?"
-    FE->>WS: {type: query, message: "..."}
-    WS->>API: Process query
+    FE->>API: POST /api/conversations/{id}/chat<br/>Content-Type: application/json
 
-    API->>RET: retrieve(query, workspace_id)
+    API->>RET: hybrid_search(query, workspace_id)
 
-    par BM25 Search
-        RET->>ES: BM25 query "Rule 155"<br/>filter: workspace_id
-        ES->>RET: [chunk_36a: score 0.95]
-    and Vector Search
-        RET->>VDB: vector query embed("Rule 155")<br/>filter: workspace_id
-        VDB->>RET: [chunk_36a: 0.82, chunk_37b: 0.71]
+    par Full-text search
+        RET->>PG: ts_rank query — workspace scoped
+        PG->>RET: [chunk_36a: rank 0.95]
+    and Vector search
+        RET->>PG: embedding cosine distance (pgvector)
+        PG->>RET: [chunk_36a: 0.82, chunk_37b: 0.71]
     end
 
-    RET->>RET: Reciprocal Rank Fusion
-    RET->>RET: Re-rank top 5
-    RET->>API: Top 5 chunks with page numbers
+    RET->>RET: Reciprocal Rank Fusion → Top 6 chunks
+    RET->>API: chunks with page_numbers[]
 
-    API->>WS: {type: sources, citations: [...]}
-    WS->>FE: Show citation badges
+    API-->>FE: SSE: data: {"type":"citations", ...}
+    FE->>FE: Show citation badges
 
-    API->>LLM: Generate with context
-    LLM->>OLL: prompt + chunks
+    API->>LLM: stream_chat(history, context_chunks, config)
+    LLM->>OLL: POST /api/chat (streaming)
 
-    loop Token Streaming
+    loop Token stream
         OLL->>LLM: token
         LLM->>API: token
-        API->>WS: {type: token, content: "Rule"}
-        WS->>FE: Append to response
+        API-->>FE: SSE: data: {"type":"token","content":"Rule"}
+        FE->>FE: Append token to response
     end
 
-    API->>WS: {type: done, tokens: 847}
-    FE->>User: Complete answer with [Page 36] [Page 37]
-    User->>FE: Click [Page 36]
-    FE->>FE: PDF Viewer scrolls to page 36, highlights text
+    API-->>FE: SSE: data: {"type":"done"}
+    FE->>User: Complete answer with citation badges
+    User->>FE: Click citation badge
+    FE->>FE: PDF Viewer opens at that page
 ```
 
 ---
@@ -740,12 +736,12 @@ flowchart LR
         HISTORY["📋 Chat History<br/>conversations, messages,<br/>citations"]
     end
 
-    subgraph Elasticsearch["Elasticsearch (BM25)"]
-        BM25["🔍 Inverted Index<br/>Exact keyword lookup<br/>'Rule' → chunk_36a<br/>'155' → chunk_36a"]
+    subgraph PostgreSQLFTS["PostgreSQL FTS (BM25)"]
+        BM25["🔍 ts_rank full-text index<br/>Exact keyword lookup<br/>'Rule 155' → chunk_36a"]
     end
 
-    subgraph ChromaDB["ChromaDB (Vector)"]
-        VEC["🧠 Embeddings<br/>768-dim vectors<br/>Semantic similarity"]
+    subgraph PGVector["PostgreSQL pgvector (Semantic)"]
+        VEC["🧠 384-dim embeddings<br/>BAAI/bge-small-en-v1.5<br/>Cosine similarity search"]
     end
 
     FILE --> ORIG
@@ -757,8 +753,8 @@ flowchart LR
 
     style MinIO fill:#fef3c7,stroke:#d97706
     style PostgreSQL fill:#dbeafe,stroke:#2563eb
-    style Elasticsearch fill:#dcfce7,stroke:#16a34a
-    style ChromaDB fill:#fce7f3,stroke:#ec4899
+    style PostgreSQLFTS fill:#dcfce7,stroke:#16a34a
+    style PGVector fill:#fce7f3,stroke:#ec4899
 ```
 
 ---

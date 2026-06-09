@@ -25,7 +25,7 @@ export default function PDFViewer({ documentId, page, onPageChange, totalPages, 
   const prevDocId = useRef<string | null>(null);
 
   useEffect(() => {
-    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+    pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
   }, []);
 
   useEffect(() => {

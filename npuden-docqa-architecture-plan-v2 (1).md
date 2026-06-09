@@ -635,16 +635,18 @@ async def parse_document_with_guarantee(
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
-| API Framework | FastAPI (Python) | Async, typed, WebSocket support, Python ML ecosystem |
-| Auth | Keycloak + OAuth2 | Enterprise SSO, LDAP, SAML, RBAC out of the box |
-| Database | PostgreSQL 16 | Users, workspaces, chat history, settings, file metadata |
-| Document Parsing | **Modular** (PaddleOCR default) | Pluggable interface, swap parsers without code changes |
-| Vector Store | ChromaDB (default) / LanceDB (lightweight) / Milvus (scale) | Tiered: LanceDB for small, ChromaDB for medium, Milvus for 10K+ |
-| Full-text Search | Elasticsearch (or LanceDB full-text for simple deployments) | BM25 keyword search for exact matches |
+| API Framework | FastAPI (Python) | Async, typed, SSE streaming, Python ML ecosystem |
+| Auth | Built-in JWT (Phase 1) → Keycloak (Phase 3+) | JWT for simple deployments; Keycloak for enterprise SSO |
+| Database | PostgreSQL 16 + pgvector extension | Users, workspaces, chat history, chunks, **vector embeddings**, file metadata — all in one store |
+| Document Parsing | PyPDF (Phase 1) → Modular PaddleOCR (Phase 4) | Pluggable interface; PyPDF covers most PDFs; PaddleOCR adds OCR/table support |
+| Vector Store | **pgvector** (Phase 1) / ChromaDB / Milvus (Phase 4+) | pgvector uses the existing Postgres instance — no extra service; Milvus for 10K+ scale |
+| Full-text Search | **PostgreSQL FTS** — `ts_rank` + `plainto_tsquery` (Phase 1) / Elasticsearch (Phase 4+) | Postgres FTS handles hybrid BM25 search without running a separate service; Elasticsearch for large-scale deployments |
+| Embedding Model | `BAAI/bge-small-en-v1.5` via **fastembed** | ~130 MB, runs on CPU, no Ollama dependency for embeddings; baked into Docker image |
 | File Storage | MinIO (S3-compatible) | Self-hosted object storage for uploaded documents |
-| Cache | Redis | Session cache, rate limiting, job queue |
-| Task Queue | Celery + Redis | Async document processing, embedding generation |
-| LLM Gateway | LiteLLM | Unified API across Ollama/OpenAI/Anthropic/Gemini/etc. |
+| Cache | Redis | Celery broker + result backend |
+| Task Queue | Celery + Redis | Async document processing, chunk embedding generation |
+| LLM Gateway | Direct OpenAI-compatible client | Supports Ollama, OpenAI, Groq, or any OpenAI-wire-format endpoint |
+| Chat Streaming | **SSE** (Server-Sent Events) | Unidirectional token stream from server to browser; simpler than WebSocket for this use case |
 
 ### Frontend
 
@@ -671,26 +673,28 @@ async def parse_document_with_guarantee(
 
 ---
 
-## 9. Retrieval Engine (Triple Search)
+## 9. Retrieval Engine (Hybrid Search)
 
 When a user asks "What does Rule 155 say?":
 
 ```
 User Query: "What does Rule 155 say?"
     │
-    ├──► BM25 Search (Elasticsearch)
-    │     Query: "Rule 155"
-    │     Returns: chunks containing exact "Rule 155" text
-    │     Score: TF-IDF based
-    │     ★ This is why we find "Rule 155" — exact keyword match
+    ├──► BM25 / Full-text Search (PostgreSQL FTS — Phase 1)
+    │     Query: plainto_tsquery('english', 'Rule 155')
+    │     Returns: chunks matching exact keywords
+    │     Score: ts_rank
+    │     ★ Finds "Rule 155" by exact keyword match
+    │     [Phase 4+: Elasticsearch for large-scale deployments]
     │
-    ├──► Vector Search (ChromaDB)
-    │     Query: embed("What does Rule 155 say?")
-    │     Returns: semantically similar chunks
-    │     Score: cosine similarity
-    │     ★ This finds related content even if wording differs
+    ├──► Vector / Semantic Search (pgvector — Phase 1)
+    │     Query: BAAI/bge-small-en-v1.5 embed("What does Rule 155 say?")
+    │     Returns: chunks with cosine similarity < threshold
+    │     Score: embedding <=> query_vector (cosine distance)
+    │     ★ Finds related content even if wording differs
+    │     [Phase 4+: ChromaDB / Milvus for very large corpora]
     │
-    └──► [Optional] PageIndex Reasoning
+    └──► [Optional] PageIndex Reasoning (Phase 4)
           Query: LLM navigates document tree to find relevant pages
           Returns: full page content with reasoning trace
           ★ Catches anything the other two miss
@@ -698,20 +702,20 @@ User Query: "What does Rule 155 say?"
     ▼
 Reciprocal Rank Fusion (RRF)
     │
-    ├── Merge results from all retrievers
+    ├── Merge results from both retrievers
+    ├── Score: 1/(60+rank_bm25) + 1/(60+rank_vector)
     ├── Deduplicate by chunk_id
-    ├── Re-rank by combined score
-    └── Top-K chunks (default K=5)
+    └── Top-K chunks (default K=6)
     │
     ▼
 LLM Generation (with citations)
     │
     ├── System prompt enforces citation format
-    ├── Each chunk carries page number
-    └── Response includes [Page 36] markers
+    ├── Each chunk carries page number(s) [can span pages]
+    └── Response includes filename references
     │
     ▼
-Response with clickable page citations
+SSE stream → Frontend citation badges + PDF viewer
 ```
 
 ### Retrieval Configuration (per-workspace)
@@ -1013,25 +1017,32 @@ helm install docqa npuden/docqa \
 
 ## 14. Development Phases
 
-### Phase 1 — Foundation (Weeks 1-3)
-**Goal:** Basic chat with documents, single user, full document coverage
+### Phase 1 — Foundation ✅ COMPLETE
+**Goal:** Basic chat with documents, multi-user, workspace isolation
 
-- [ ] FastAPI project scaffold with auth middleware
-- [ ] PostgreSQL schema (users, documents, chunks, conversations)
-- [ ] Parser module interface + PaddleOCR implementation
-- [ ] PyPDF fallback parser
-- [ ] Full document coverage verifier
-- [ ] Structure-aware chunking pipeline
-- [ ] Dual indexing: BM25 (LanceDB full-text) + vector (ChromaDB)
-- [ ] Hybrid retrieval with Reciprocal Rank Fusion
-- [ ] LLM generation with citations via LiteLLM
-- [ ] Chat API with WebSocket streaming
-- [ ] MinIO for file storage
-- [ ] React frontend: upload + chat + citation display
-- [ ] Docker Compose for local development (GPU + CPU profiles)
-- [ ] Hardware detection and auto-configuration
+- [x] FastAPI project scaffold with JWT auth middleware
+- [x] PostgreSQL schema (users, workspaces, documents, chunks, conversations, messages)
+- [x] PyPDF-based document parsing pipeline (PDF, DOCX, XLSX, PPTX supported)
+- [x] Chunking pipeline with page number tracking
+- [x] Dual indexing: PostgreSQL FTS (BM25) + pgvector (semantic)
+- [x] Hybrid retrieval with Reciprocal Rank Fusion (RRF)
+- [x] LLM generation with page-level citations
+- [x] Chat API with SSE (Server-Sent Events) streaming
+- [x] MinIO for file storage (original PDFs served to PDF viewer)
+- [x] React/Next.js frontend: upload + chat + citation display + PDF viewer
+- [x] Workspace isolation — all queries scoped by `workspace_id`
+- [x] RBAC: viewer / member / admin roles per workspace
+- [x] Admin dashboard: user management, LLM config, workspace management
+- [x] Docker Compose for local development
+- [x] Kubernetes manifests for production deployment (single-node + GPU)
+- [ ] PaddleOCR parser module (Phase 4)
+- [ ] Full document coverage verifier (Phase 2)
+- [ ] Hardware auto-detection (Phase 2)
 
-**Deliverable:** Single-user app that reads ALL 50 pages and finds "Rule155."
+**Embedding model in production:** `BAAI/bge-small-en-v1.5` via fastembed — baked into the Docker image, no runtime download needed.  
+**LLM in production:** `gemma4:26b` via Ollama on NVIDIA A40 (`nid-practice`).
+
+**Deliverable:** ✅ Working multi-user RAG platform deployed on Kubernetes.
 
 ### Phase 2 — Multi-User + Workspaces (Weeks 4-6)
 **Goal:** Enterprise workspace isolation, user management

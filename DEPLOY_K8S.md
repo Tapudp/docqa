@@ -53,7 +53,7 @@ Images are built directly on the server with Docker and imported into containerd
 | `postgres` | 1 | `pgvector/pgvector:pg16` | 5432 | None (cluster-internal) | Stores users, docs, chunks, conversations |
 | `redis` | 1 | `redis:7-alpine` | 6379 | None (cluster-internal) | Celery task queue broker |
 | `minio` | 1 | `minio/minio:latest` | 9000 / 9001 | None (cluster-internal) | Object storage for uploaded files; console on :9001 |
-| `api` | 2 | `docker.io/library/docqa-api:latest` | 8000 | `http://172.16.200.116:30800` | FastAPI backend; 4 uvicorn workers each |
+| `api` | 1 | `docker.io/library/docqa-api:latest` | 8000 | `http://172.16.200.116:30800` | FastAPI backend; 4 uvicorn workers; hostNetwork — keep at 1 replica on single-node |
 | `celery-worker` | 4 | `docker.io/library/docqa-api:latest` | — | None | Background parse + index pipeline; 1 concurrency each |
 | `frontend` | 1 | `docker.io/library/docqa-frontend:latest` | 3000 | `http://172.16.200.116:30300` | Next.js 14 app |
 | `ollama` | 1 (pre-existing) | — | 11434 | Via ClusterIP service in `ai-services` ns | `gemma4:26b` loaded; accessed at `ollama.ai-services.svc.cluster.local:11434` |
@@ -149,20 +149,32 @@ ssh -T git@github.com
 
 ### 3b. Clone and build
 
+> **Critical on this server:** Docker's default bridge network cannot reach the internet. Every `docker build` on `nid-practice` must use `--network=host`.
+
 ```bash
 git clone git@github.com:Tapudp/docqa.git && cd docqa
 
 # API image — also used for the celery-worker pods
-docker build --target api -t docqa-api:latest .
+# --network=host is required: pip install + the fastembed model pre-download both need internet
+docker build --network=host --target api -t docqa-api:latest .
 
 # Frontend — NEXT_PUBLIC_API_URL is baked into the JS bundle at build time
 # It must match what the browser uses to reach the API
-docker build --target frontend \
+docker build --network=host --target frontend \
   --build-arg NEXT_PUBLIC_API_URL=http://172.16.200.116:30800 \
   -t docqa-frontend:latest .
 ```
 
-> First build takes ~10 min (downloading base images + installing packages). Subsequent rebuilds are fast thanks to Docker layer caching.
+The API image bakes in the `BAAI/bge-small-en-v1.5` embedding model (~130 MB) during the build step:
+
+```dockerfile
+# In the root Dockerfile, after COPY backend/:
+RUN python3 -c "from fastembed import TextEmbedding; list(TextEmbedding('BAAI/bge-small-en-v1.5').embed(['warmup']))"
+```
+
+This means pods never need outbound internet at runtime — the model is already inside the image.
+
+> First build takes ~15 min (pip install + model download during build). Subsequent rebuilds hit the layer cache and are fast, as long as requirements.txt hasn't changed.
 
 ### 3c. Import into containerd
 
@@ -479,7 +491,9 @@ metadata:
   name: api
   namespace: docqa
 spec:
-  replicas: 2
+  # Single-node cluster + hostNetwork = only 1 pod can bind port 8000 on the host.
+  # Rolling updates with replicas>1 deadlock (new pod can't schedule, old pod stays).
+  replicas: 1
   selector:
     matchLabels:
       app: api
@@ -490,6 +504,11 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/hostname: nid-practice
+      # hostNetwork lets the pod use the host's network stack.
+      # Required so that the fastembed model (baked into the image) can be loaded
+      # and so any future model downloads can reach HuggingFace.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: api
           image: docker.io/library/docqa-api:latest
@@ -551,6 +570,8 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/hostname: nid-practice
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: worker
           image: docker.io/library/docqa-api:latest
@@ -701,22 +722,94 @@ cd ~/docqa
 git pull
 
 # ── API changed ──────────────────────────────────────────────
-docker build --target api -t docqa-api:latest .
+docker build --network=host --target api -t docqa-api:latest .
 docker save docqa-api:latest | sudo ctr -n k8s.io images import -
 kubectl rollout restart deployment/api deployment/celery-worker -n docqa
 
 # ── Frontend changed ─────────────────────────────────────────
-docker build --target frontend \
+docker build --network=host --target frontend \
   --build-arg NEXT_PUBLIC_API_URL=http://172.16.200.116:30800 \
   -t docqa-frontend:latest .
 docker save docqa-frontend:latest | sudo ctr -n k8s.io images import -
 kubectl rollout restart deployment/frontend -n docqa
 
-# Watch rollout
+# Watch rollout (API has replicas:1, so no rolling deadlock)
 kubectl rollout status deployment/api -n docqa
 ```
 
 > Only rebuild what changed. If you only touched the backend, skip the frontend build and vice versa.
+
+> **Rolling update note:** The API is intentionally kept at `replicas: 1`. With `hostNetwork: true` on a single-node cluster, only one API pod can bind port 8000 at a time. Increasing replicas causes the new pod to stay `Pending` (port conflict), deadlocking the rollout. If this happens: `kubectl rollout undo deployment/api -n docqa`.
+
+---
+
+## Troubleshooting
+
+Hard-won lessons from the first deployment on `nid-practice`.
+
+### Docker build fails — network unreachable / pip can't download packages
+
+`nid-practice`'s Docker bridge network cannot reach the internet. Always pass `--network=host` to every `docker build` command. Without it, `pip install` and the fastembed model pre-download both fail silently or with `Connection refused`.
+
+```bash
+# Wrong — will fail
+docker build --target api -t docqa-api:latest .
+
+# Correct
+docker build --network=host --target api -t docqa-api:latest .
+```
+
+### MinIO pod CrashLoopBackOff
+
+MinIO's Docker entrypoint uses `ENTRYPOINT` — if you use `command:` in the K8s spec it overrides the entrypoint entirely and MinIO gets no arguments. Use `args:` instead:
+
+```yaml
+# Wrong
+command: ["server", "/data", "--console-address", ":9001"]
+
+# Correct
+args: ["server", "/data", "--console-address", ":9001"]
+```
+
+### MinIO bucket init says "bucket already exists"
+
+This is not an error. The `minio-init` job ran successfully on a previous attempt and created the bucket. Safe to ignore.
+
+### Chat stuck at "Thinking..." — embed call blocking
+
+The `embed_texts()` call in `backend/app/retrieval/search.py` is synchronous. If called directly from an `async` function it blocks the entire uvicorn event loop, freezing all in-flight requests on that worker.
+
+Fix: wrap in `run_in_executor` so it runs in a thread pool:
+
+```python
+loop = asyncio.get_running_loop()
+query_vec = await loop.run_in_executor(None, lambda: embed_texts([query])[0])
+```
+
+This is already fixed in the codebase. If you see chat hanging indefinitely, check that the API pod is running the latest image with this fix.
+
+### Chat stuck at "Thinking..." — fastembed model not available
+
+`BAAI/bge-small-en-v1.5` is pre-downloaded into the Docker image during `docker build --network=host`. If you built the image without `--network=host`, the `RUN python3 -c "..."` step silently fails and the model is absent from the image. Pods then try to download it at runtime, which fails (no internet from pod network) and hangs.
+
+Fix: rebuild the API image with `--network=host`.
+
+Quick workaround (no rebuild): patch the API deployment with `hostNetwork: true` so the pod can reach HuggingFace:
+```bash
+kubectl patch deployment api -n docqa -p \
+  '{"spec":{"template":{"spec":{"hostNetwork":true,"dnsPolicy":"ClusterFirstWithHostNet"}}}}'
+```
+
+### Rolling update deadlocks with Pending pod
+
+Symptom: `kubectl get pods -n docqa` shows the new API pod stuck at `Pending` with the old pod still `Running`.
+
+Cause: `hostNetwork: true` means the pod claims the host's port 8000. On a single-node cluster only one pod can hold that port. The rollout can't complete because the new pod can't schedule, and the old pod won't terminate until the new pod is ready.
+
+Fix: keep API `replicas: 1`. If you accidentally trigger this state:
+```bash
+kubectl rollout undo deployment/api -n docqa
+```
 
 ---
 
