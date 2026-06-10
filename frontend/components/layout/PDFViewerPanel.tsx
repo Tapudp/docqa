@@ -25,7 +25,6 @@ export default function RightPanel() {
   } = useStore();
 
   const [zoom, setZoom] = useState(1);
-  const [fitZoom, setFitZoom] = useState<number | null>(null);
 
   const activeWorkspace = apiWorkspaces.find((w) => w.id === activeWorkspaceId);
   const memberRole = activeWorkspace?.member_role ?? "viewer";
@@ -336,7 +335,7 @@ export default function RightPanel() {
                   </svg>
                 </ZoomBtn>
                 <button
-                  onClick={() => setZoom(fitZoom ?? 1)}
+                  onClick={() => setZoom(1)}
                   title="Reset zoom to fit"
                   style={{
                     height: "22px",
@@ -368,7 +367,6 @@ export default function RightPanel() {
                 onPageChange={setPdfPage}
                 totalPages={pdfDoc.total_pages ?? null}
                 zoom={zoom}
-                onFitZoom={(z) => { setFitZoom(z); setZoom(z); }}
               />
             </>
           )}

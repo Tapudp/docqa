@@ -13,22 +13,16 @@ interface Props {
   onPageChange: (page: number) => void;
   totalPages: number | null;
   zoom?: number;
-  onFitZoom?: (z: number) => void;
 }
 
-export default function PDFViewer({ documentId, page, onPageChange, totalPages, zoom = 1, onFitZoom }: Props) {
+export default function PDFViewer({ documentId, page, onPageChange, totalPages, zoom = 1 }: Props) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [containerWidth, setContainerWidth] = useState(300);
-  const [naturalPageWidth, setNaturalPageWidth] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const prevDocId = useRef<string | null>(null);
-  // Track whether we've emitted a fit zoom for the current document
-  const fittedRef = useRef(false);
-  const onFitZoomRef = useRef(onFitZoom);
-  onFitZoomRef.current = onFitZoom;
 
   useEffect(() => {
     pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
@@ -43,22 +37,6 @@ export default function PDFViewer({ documentId, page, onPageChange, totalPages, 
     ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, []);
-
-  // Reset fit state when document changes
-  useEffect(() => {
-    setNaturalPageWidth(null);
-    fittedRef.current = false;
-  }, [documentId]);
-
-  // Emit fit zoom once when both container width and natural page width are known
-  useEffect(() => {
-    if (naturalPageWidth && containerWidth && onFitZoomRef.current && !fittedRef.current) {
-      fittedRef.current = true;
-      const raw = containerWidth / naturalPageWidth;
-      const clamped = parseFloat(Math.max(0.5, Math.min(2.5, raw)).toFixed(2));
-      onFitZoomRef.current(clamped);
-    }
-  }, [naturalPageWidth, containerWidth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!documentId) return;
@@ -113,23 +91,29 @@ export default function PDFViewer({ documentId, page, onPageChange, totalPages, 
   }
 
   const maxPage = numPages ?? totalPages ?? 999;
+  // zoom=1 → page fills container edge-to-edge (no grey sides)
+  // zoom>1 → page wider than container, horizontal scroll kicks in
   const pageWidth = Math.floor(containerWidth * zoom);
 
   return (
-    <div ref={containerRef} style={{ flex: 1, overflowY: "auto", overflowX: zoom > 1 ? "auto" : "hidden", padding: 0, background: "#f0f0f0" }}>
+    <div
+      ref={containerRef}
+      style={{
+        flex: 1,
+        overflowY: "auto",
+        overflowX: zoom > 1 ? "auto" : "hidden",
+        background: "#f0f0f0",
+      }}
+    >
       <Document
         file={blobUrl}
-        onLoadSuccess={async (pdf) => {
-          setNumPages(pdf.numPages);
-          if (page > pdf.numPages) onPageChange(pdf.numPages);
-          try {
-            const p = await pdf.getPage(1);
-            const vp = p.getViewport({ scale: 1 });
-            setNaturalPageWidth(Math.round(vp.width));
-          } catch (_) {}
+        onLoadSuccess={({ numPages: n }) => {
+          setNumPages(n);
+          if (page > n) onPageChange(n);
         }}
         onLoadError={(err) => setError(err.message)}
         loading={null}
+        style={{ width: "100%" }}
       >
         <Page
           key={`${documentId}-${page}-${zoom}`}
@@ -138,7 +122,7 @@ export default function PDFViewer({ documentId, page, onPageChange, totalPages, 
           renderTextLayer
           renderAnnotationLayer
           loading={
-            <div style={{ height: "400px", background: "white", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ height: "400px", background: "white", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <p style={{ fontSize: "12px", color: "var(--airbnb-muted)" }}>Rendering…</p>
             </div>
           }
