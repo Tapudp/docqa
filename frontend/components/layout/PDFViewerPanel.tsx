@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useStore } from "@/lib/store";
 import DocumentCard from "@/components/documents/DocumentCard";
 import type { ApiDocument } from "@/lib/types";
@@ -25,8 +25,7 @@ export default function RightPanel() {
   } = useStore();
 
   const [zoom, setZoom] = useState(1);
-
-  useEffect(() => { setZoom(1); }, [pdfDocId]);
+  const [fitZoom, setFitZoom] = useState<number | null>(null);
 
   const activeWorkspace = apiWorkspaces.find((w) => w.id === activeWorkspaceId);
   const memberRole = activeWorkspace?.member_role ?? "viewer";
@@ -337,8 +336,8 @@ export default function RightPanel() {
                   </svg>
                 </ZoomBtn>
                 <button
-                  onClick={() => setZoom(1)}
-                  title="Reset zoom"
+                  onClick={() => setZoom(fitZoom ?? 1)}
+                  title="Reset zoom to fit"
                   style={{
                     height: "22px",
                     minWidth: "38px",
@@ -369,6 +368,7 @@ export default function RightPanel() {
                 onPageChange={setPdfPage}
                 totalPages={pdfDoc.total_pages ?? null}
                 zoom={zoom}
+                onFitZoom={(z) => { setFitZoom(z); setZoom(z); }}
               />
             </>
           )}
