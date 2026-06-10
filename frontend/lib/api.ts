@@ -1,4 +1,4 @@
-import type { ApiUser, ApiWorkspace, ApiDocument, ApiConversation, ApiMessage, TokenResponse, LLMConfig, OllamaModel, AdminUser, WorkspaceMember, BulkFileResult } from "./types";
+import type { ApiUser, ApiWorkspace, ApiDocument, ApiConversation, ApiMessage, TokenResponse, LLMConfig, OllamaModel, AdminUser, WorkspaceMember, BulkFileResult, RetrievalConfig } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -157,6 +157,14 @@ export const api = {
   },
 
   admin: {
+    getRetrievalConfig: () => request<RetrievalConfig>("/api/admin/retrieval/config"),
+
+    updateRetrievalConfig: (cfg: RetrievalConfig) =>
+      request<RetrievalConfig>("/api/admin/retrieval/config", {
+        method: "PATCH",
+        body: JSON.stringify(cfg),
+      }),
+
     getLLMConfig: () => request<LLMConfig>("/api/admin/llm/config"),
 
     updateLLMConfig: (cfg: Omit<LLMConfig, "api_key"> & { api_key: string }) =>

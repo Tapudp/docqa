@@ -31,39 +31,40 @@ async def retrieve(
     workspace_id: uuid.UUID,
     question: str,
     top_k: int = 15,
+    inner_k_multiplier: int = 5,
+    multi_query: bool = True,
 ) -> list[SearchResult]:
     """
     When a question references multiple numbered entities (e.g. "compare rules 155
     and 166"), a single embedding splits attention and may miss both chunks.
     We detect this, fire one targeted search per entity in parallel, then merge.
     """
-    entity_match = re.search(
-        r'\b(rule|section|clause|article|chapter|para)s?\b',
-        question,
-        re.IGNORECASE,
-    )
-    if entity_match:
-        label = entity_match.group(1).lower()
-        numbers = re.findall(r'\b(\d{1,4}(?:\.\d+)*)\b', question)
-        if len(numbers) >= 2:
-            # One targeted query per entity + the original broad query
-            sub_queries = [f"{label} {n}" for n in numbers] + [question]
-            per_k = max(top_k // len(sub_queries), 6)
-            all_results = await asyncio.gather(*[
-                hybrid_search(db, workspace_id, q, top_k=per_k)
-                for q in sub_queries
-            ])
-            # Merge, deduplicate — targeted results come first
-            seen: set[str] = set()
-            merged: list[SearchResult] = []
-            for results in all_results:
-                for r in results:
-                    if r.chunk_id not in seen:
-                        seen.add(r.chunk_id)
-                        merged.append(r)
-            return merged[:top_k]
+    if multi_query:
+        entity_match = re.search(
+            r'\b(rule|section|clause|article|chapter|para)s?\b',
+            question,
+            re.IGNORECASE,
+        )
+        if entity_match:
+            label = entity_match.group(1).lower()
+            numbers = re.findall(r'\b(\d{1,4}(?:\.\d+)*)\b', question)
+            if len(numbers) >= 2:
+                sub_queries = [f"{label} {n}" for n in numbers] + [question]
+                per_k = max(top_k // len(sub_queries), 6)
+                all_results = await asyncio.gather(*[
+                    hybrid_search(db, workspace_id, q, top_k=per_k, inner_k_multiplier=inner_k_multiplier)
+                    for q in sub_queries
+                ])
+                seen: set[str] = set()
+                merged: list[SearchResult] = []
+                for results in all_results:
+                    for r in results:
+                        if r.chunk_id not in seen:
+                            seen.add(r.chunk_id)
+                            merged.append(r)
+                return merged[:top_k]
 
-    return await hybrid_search(db, workspace_id, question, top_k=top_k)
+    return await hybrid_search(db, workspace_id, question, top_k=top_k, inner_k_multiplier=inner_k_multiplier)
 
 
 # ── Schemas ───────────────────────────────────────────────────
@@ -224,8 +225,20 @@ async def chat(
         cfg_row = await db.get(SystemConfig, "llm")
         llm_config: LLMConfig = cfg_row.value if cfg_row else {}
 
+    # Load retrieval config (workspace override → global → hardcoded defaults)
+    ret_row = await db.get(SystemConfig, "retrieval")
+    ret_cfg = ret_row.value if ret_row else {}
+    r_top_k = int(ret_cfg.get("top_k", 15))
+    r_multiplier = int(ret_cfg.get("inner_k_multiplier", 5))
+    r_multi_query = bool(ret_cfg.get("multi_query", True))
+
     # Retrieve relevant chunks — uses multi-query when question references multiple entities
-    hits = await retrieve(db, conv.workspace_id, body.question)
+    hits = await retrieve(
+        db, conv.workspace_id, body.question,
+        top_k=r_top_k,
+        inner_k_multiplier=r_multiplier,
+        multi_query=r_multi_query,
+    )
 
     citations = [
         {

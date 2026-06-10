@@ -24,6 +24,7 @@ async def hybrid_search(
     workspace_id: UUID,
     query: str,
     top_k: int = 15,
+    inner_k_multiplier: int = 5,
 ) -> list[SearchResult]:
     loop = asyncio.get_running_loop()
     query_vec = await loop.run_in_executor(None, lambda: embed_texts([query])[0])
@@ -31,7 +32,7 @@ async def hybrid_search(
 
     # Cast a wider net before RRF so deep-document content isn't missed.
     # inner_k is how many candidates each sub-query contributes; final output is top_k.
-    inner_k = max(top_k * 5, 50)
+    inner_k = max(top_k * inner_k_multiplier, 50)
 
     # Vector similarity (cosine) + PostgreSQL full-text search combined via RRF.
     # FTS uses websearch_to_tsquery which handles numbers and partial phrases better

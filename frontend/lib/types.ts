@@ -58,6 +58,14 @@ export interface LLMConfig {
   api_key: string;
 }
 
+export interface RetrievalConfig {
+  top_k: number;
+  inner_k_multiplier: number;
+  chunk_size: number;
+  chunk_overlap: number;
+  multi_query: boolean;
+}
+
 export interface OllamaModel {
   name: string;
   size: number;

@@ -174,6 +174,70 @@ async def list_ollama_models(
     return models
 
 
+# ── Retrieval config endpoints ────────────────────────────────
+
+class RetrievalConfigIn(BaseModel):
+    top_k: int = 15
+    inner_k_multiplier: int = 5
+    chunk_size: int = 1500
+    chunk_overlap: int = 300
+    multi_query: bool = True
+
+
+class RetrievalConfigOut(RetrievalConfigIn):
+    pass
+
+
+def _default_retrieval() -> dict:
+    return {
+        "top_k": 15,
+        "inner_k_multiplier": 5,
+        "chunk_size": 1500,
+        "chunk_overlap": 300,
+        "multi_query": True,
+    }
+
+
+@router.get("/retrieval/config", response_model=RetrievalConfigOut)
+async def get_retrieval_config(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    row = await db.get(SystemConfig, "retrieval")
+    cfg = {**_default_retrieval(), **(row.value if row else {})}
+    return RetrievalConfigOut(**cfg)
+
+
+@router.patch("/retrieval/config", response_model=RetrievalConfigOut)
+async def update_retrieval_config(
+    body: RetrievalConfigIn,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    if body.top_k < 1 or body.top_k > 200:
+        raise HTTPException(status_code=422, detail="top_k must be between 1 and 200")
+    if body.inner_k_multiplier < 1 or body.inner_k_multiplier > 50:
+        raise HTTPException(status_code=422, detail="inner_k_multiplier must be between 1 and 50")
+    if body.chunk_size < 200 or body.chunk_size > 8000:
+        raise HTTPException(status_code=422, detail="chunk_size must be between 200 and 8000")
+    if body.chunk_overlap < 0 or body.chunk_overlap >= body.chunk_size:
+        raise HTTPException(status_code=422, detail="chunk_overlap must be less than chunk_size")
+
+    new_value = body.model_dump()
+    row = await db.get(SystemConfig, "retrieval")
+    if row:
+        row.value = new_value
+        row.updated_at = datetime.now(timezone.utc)
+        row.updated_by = admin.id
+    else:
+        row = SystemConfig(key="retrieval", value=new_value, updated_by=admin.id)
+        db.add(row)
+
+    await db.commit()
+    await db.refresh(row)
+    return RetrievalConfigOut(**row.value)
+
+
 # ── User management ───────────────────────────────────────────
 
 class UserOut(BaseModel):

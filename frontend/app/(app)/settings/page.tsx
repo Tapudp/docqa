@@ -1,15 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
 import { api, ApiError } from "@/lib/api";
-import type { LLMConfig, OllamaModel, AdminUser, WorkspaceMember, ApiWorkspace } from "@/lib/types";
+import type { LLMConfig, OllamaModel, AdminUser, WorkspaceMember, ApiWorkspace, RetrievalConfig } from "@/lib/types";
+
+type Section = "llm" | "retrieval" | "users" | "workspaces";
 
 export default function SettingsPage() {
   const router = useRouter();
   const currentUser = useStore((s) => s.currentUser);
+  const [activeSection, setActiveSection] = useState<Section>("llm");
 
   useEffect(() => {
     if (currentUser && currentUser.role !== "admin") router.replace("/workspace");
@@ -19,46 +22,65 @@ export default function SettingsPage() {
 
   return (
     <div style={{ display: "flex", height: "100vh", background: "var(--airbnb-canvas)", overflow: "hidden" }}>
+      {/* ── Sidebar nav ─────────────────────────────────── */}
       <nav style={{ width: "220px", minWidth: "220px", borderRight: "1px solid var(--airbnb-hairline)", background: "var(--airbnb-surface-soft)", display: "flex", flexDirection: "column", padding: "20px 12px" }}>
-        <Link href="/workspace" style={{ display: "flex", alignItems: "center", gap: "7px", padding: "8px 10px", borderRadius: "var(--radius-sm)", textDecoration: "none", marginBottom: "16px", color: "var(--airbnb-muted)", fontSize: "13px" }}>
+        <Link
+          href="/workspace"
+          style={{ display: "flex", alignItems: "center", gap: "7px", padding: "8px 10px", borderRadius: "var(--radius-sm)", textDecoration: "none", marginBottom: "16px", color: "var(--airbnb-muted)", fontSize: "13px" }}
+        >
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
             <path d="M8 2L4 6.5l4 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           Back to workspace
         </Link>
+
         <p style={{ fontSize: "10px", fontWeight: 700, color: "var(--airbnb-muted)", textTransform: "uppercase", letterSpacing: "0.7px", padding: "0 10px", marginBottom: "4px" }}>Settings</p>
-        <NavItem href="#llm" label="LLM Configuration" />
-        <NavItem href="#users" label="Users" />
-        <NavItem href="#workspaces" label="Workspaces & Members" />
+
+        {(
+          [
+            { id: "llm", label: "LLM Configuration", icon: "M10 3H3v7h7V3zM7 9H4V6h3v3z" },
+            { id: "retrieval", label: "Retrieval Config", icon: "M2 5h9M2 8h6M2 11h4M11 8l2 2-2 2" },
+            { id: "users", label: "Users", icon: "M6.5 6a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM2 11c0-2.21 2.015-4 4.5-4s4.5 1.79 4.5 4" },
+            { id: "workspaces", label: "Workspaces & Members", icon: "M1.5 3h9v7h-9zM7 10v2.5M4.5 10v2.5M5.75 12.5h2" },
+          ] as { id: Section; label: string; icon: string }[]
+        ).map(({ id, label, icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveSection(id)}
+            style={{
+              display: "flex", alignItems: "center", gap: "8px",
+              padding: "8px 10px", borderRadius: "var(--radius-sm)",
+              border: "none", cursor: "pointer", textAlign: "left",
+              fontSize: "13px", fontWeight: activeSection === id ? 600 : 400,
+              color: activeSection === id ? "var(--airbnb-ink)" : "var(--airbnb-body)",
+              background: activeSection === id ? "var(--airbnb-canvas)" : "transparent",
+              width: "100%", marginBottom: "2px",
+              fontFamily: "inherit",
+              boxShadow: activeSection === id ? "0 1px 3px rgba(0,0,0,0.06)" : "none",
+              transition: "background 0.1s ease, color 0.1s ease",
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ flexShrink: 0 }}>
+              <path d={icon} stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            </svg>
+            {label}
+          </button>
+        ))}
       </nav>
 
-      <main style={{ flex: 1, overflowY: "auto", padding: "32px 40px" }}>
-        <h1 style={{ fontSize: "22px", fontWeight: 700, color: "var(--airbnb-ink)", marginBottom: "32px" }}>Admin Settings</h1>
-        <LLMSection />
-        <Divider />
-        <UsersSection currentUserId={currentUser.id} />
-        <Divider />
-        <WorkspacesSection />
+      {/* ── Main content ─────────────────────────────────── */}
+      <main style={{ flex: 1, overflowY: "auto", padding: "32px 40px", maxWidth: "860px" }}>
+        {activeSection === "llm" && <LLMSection />}
+        {activeSection === "retrieval" && <RetrievalSection />}
+        {activeSection === "users" && <UsersSection currentUserId={currentUser.id} />}
+        {activeSection === "workspaces" && <WorkspacesSection />}
       </main>
     </div>
   );
 }
 
-function NavItem({ href, label }: { href: string; label: string }) {
-  return (
-    <a href={href} style={{ display: "flex", alignItems: "center", padding: "8px 10px", borderRadius: "var(--radius-sm)", textDecoration: "none", color: "var(--airbnb-body)", fontSize: "13px", marginBottom: "2px" }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--airbnb-surface-strong)")}
-      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-      {label}
-    </a>
-  );
-}
 
-function Divider() {
-  return <div style={{ height: "1px", background: "var(--airbnb-hairline)", margin: "40px 0" }} />;
-}
-
-/* ── LLM Configuration ────────────────────────────────────── */
+/* ── LLM Configuration ──────────────────────────────────────── */
 
 const PROVIDERS = [
   { value: "ollama", label: "Ollama (local / on-prem)" },
@@ -80,7 +102,7 @@ function LLMSection() {
     api.admin.getLLMConfig().then(setConfig).catch((e) => setError(e.message));
   }, []);
 
-  async function fetchModels() {
+  const fetchModels = useCallback(async () => {
     setLoadingModels(true);
     setModelsError(null);
     try {
@@ -90,11 +112,11 @@ function LLMSection() {
     } finally {
       setLoadingModels(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     if (config?.provider === "ollama") fetchModels();
-  }, [config?.provider]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [config?.provider, fetchModels]);
 
   async function handleSave() {
     if (!config) return;
@@ -112,14 +134,14 @@ function LLMSection() {
   }
 
   if (!config) return (
-    <section id="llm">
+    <section>
       <SectionHeader title="LLM Configuration" subtitle="Configure which language model DocQA uses to answer questions." />
       <p style={{ fontSize: "13px", color: "var(--airbnb-muted)" }}>{error ?? "Loading…"}</p>
     </section>
   );
 
   return (
-    <section id="llm">
+    <section>
       <SectionHeader title="LLM Configuration" subtitle="Configure which language model DocQA uses. Changes take effect immediately — no restart needed." />
       <div style={{ display: "grid", gap: "20px", maxWidth: "540px" }}>
         <Field label="Provider">
@@ -162,16 +184,264 @@ function LLMSection() {
   );
 }
 
-/* ── Users ────────────────────────────────────────────────── */
+
+/* ── Retrieval Configuration ───────────────────────────────── */
+
+const HARDWARE_PRESETS = [
+  {
+    label: "Single GPU (7–13B)",
+    description: "RTX 3090/4090, A10 · 16–24 GB VRAM",
+    values: { top_k: 10, inner_k_multiplier: 5, chunk_size: 1200, chunk_overlap: 200, multi_query: true },
+  },
+  {
+    label: "A40 / A100 (26–34B)",
+    description: "A40, A100 · 40–80 GB VRAM  ← current nid-practice",
+    values: { top_k: 15, inner_k_multiplier: 5, chunk_size: 1500, chunk_overlap: 300, multi_query: true },
+  },
+  {
+    label: "Dual H100 (70B)",
+    description: "2× H100 SXM · 160 GB VRAM",
+    values: { top_k: 35, inner_k_multiplier: 10, chunk_size: 2000, chunk_overlap: 400, multi_query: true },
+  },
+  {
+    label: "H100 Cluster (405B+)",
+    description: "4+ H100/H200 · 320+ GB VRAM",
+    values: { top_k: 75, inner_k_multiplier: 15, chunk_size: 2500, chunk_overlap: 500, multi_query: true },
+  },
+];
+
+const DEFAULTS: RetrievalConfig = {
+  top_k: 15,
+  inner_k_multiplier: 5,
+  chunk_size: 1500,
+  chunk_overlap: 300,
+  multi_query: true,
+};
+
+function RetrievalSection() {
+  const [config, setConfig] = useState<RetrievalConfig | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [reindexWarning, setReindexWarning] = useState(false);
+  const [origChunking, setOrigChunking] = useState({ chunk_size: 0, chunk_overlap: 0 });
+
+  useEffect(() => {
+    api.admin.getRetrievalConfig()
+      .then((cfg) => {
+        setConfig(cfg);
+        setOrigChunking({ chunk_size: cfg.chunk_size, chunk_overlap: cfg.chunk_overlap });
+      })
+      .catch(() => {
+        setConfig(DEFAULTS);
+        setOrigChunking({ chunk_size: DEFAULTS.chunk_size, chunk_overlap: DEFAULTS.chunk_overlap });
+      });
+  }, []);
+
+  function applyPreset(preset: typeof HARDWARE_PRESETS[0]) {
+    setConfig(preset.values);
+    setReindexWarning(
+      preset.values.chunk_size !== origChunking.chunk_size ||
+      preset.values.chunk_overlap !== origChunking.chunk_overlap
+    );
+  }
+
+  function handleChange(key: keyof RetrievalConfig, value: number | boolean) {
+    if (!config) return;
+    const next = { ...config, [key]: value };
+    setConfig(next);
+    if (key === "chunk_size" || key === "chunk_overlap") {
+      setReindexWarning(
+        next.chunk_size !== origChunking.chunk_size ||
+        next.chunk_overlap !== origChunking.chunk_overlap
+      );
+    }
+  }
+
+  async function handleSave() {
+    if (!config) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const saved_ = await api.admin.updateRetrievalConfig(config);
+      setConfig(saved_);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!config) return (
+    <section>
+      <SectionHeader title="Retrieval Configuration" subtitle="Tune how documents are searched and how much context is sent to the LLM." />
+      <p style={{ fontSize: "13px", color: "var(--airbnb-muted)" }}>Loading…</p>
+    </section>
+  );
+
+  const contextTokens = Math.round(config.top_k * config.chunk_size / 4);
+
+  return (
+    <section>
+      <SectionHeader
+        title="Retrieval Configuration"
+        subtitle="Tune search depth and chunk quality. Changes to top_k and inner_k take effect immediately. Chunk size changes require re-indexing documents."
+      />
+
+      {/* Hardware presets */}
+      <div style={{ marginBottom: "28px" }}>
+        <p style={{ fontSize: "12px", fontWeight: 600, color: "var(--airbnb-muted)", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+          Hardware presets
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", maxWidth: "640px" }}>
+          {HARDWARE_PRESETS.map((preset) => (
+            <button
+              key={preset.label}
+              onClick={() => applyPreset(preset)}
+              style={{
+                padding: "12px 14px", border: "1px solid var(--airbnb-hairline)",
+                borderRadius: "var(--radius-sm)", background: "var(--airbnb-canvas)",
+                cursor: "pointer", textAlign: "left", fontFamily: "inherit",
+                transition: "border-color 0.12s ease, background 0.12s ease",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--airbnb-ink)"; e.currentTarget.style.background = "var(--airbnb-surface-soft)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--airbnb-hairline)"; e.currentTarget.style.background = "var(--airbnb-canvas)"; }}
+            >
+              <p style={{ margin: "0 0 2px", fontSize: "12px", fontWeight: 600, color: "var(--airbnb-ink)" }}>{preset.label}</p>
+              <p style={{ margin: 0, fontSize: "11px", color: "var(--airbnb-muted)", lineHeight: 1.4 }}>{preset.description}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Parameters */}
+      <div style={{ display: "grid", gap: "20px", maxWidth: "540px" }}>
+        {/* top_k */}
+        <Field
+          label="top_k — results sent to LLM"
+          hint={`~${contextTokens.toLocaleString()} context tokens`}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <input
+              type="range" min={1} max={200} value={config.top_k}
+              onChange={(e) => handleChange("top_k", parseInt(e.target.value))}
+              style={{ flex: 1 }}
+            />
+            <input
+              type="number" min={1} max={200} value={config.top_k}
+              onChange={(e) => handleChange("top_k", Math.max(1, Math.min(200, parseInt(e.target.value) || 1)))}
+              style={{ ...inputStyle, width: "64px", flexShrink: 0 }}
+            />
+          </div>
+          <p style={{ margin: "4px 0 0", fontSize: "11px", color: "var(--airbnb-muted)", lineHeight: 1.5 }}>
+            More results = better recall but more tokens consumed. Safe ceiling = (model context window ÷ 375).
+          </p>
+        </Field>
+
+        {/* inner_k_multiplier */}
+        <Field
+          label="Inner search multiplier"
+          hint={`vector pool = ${config.top_k * config.inner_k_multiplier} candidates`}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <input
+              type="range" min={1} max={50} value={config.inner_k_multiplier}
+              onChange={(e) => handleChange("inner_k_multiplier", parseInt(e.target.value))}
+              style={{ flex: 1 }}
+            />
+            <input
+              type="number" min={1} max={50} value={config.inner_k_multiplier}
+              onChange={(e) => handleChange("inner_k_multiplier", Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+              style={{ ...inputStyle, width: "64px", flexShrink: 0 }}
+            />
+          </div>
+          <p style={{ margin: "4px 0 0", fontSize: "11px", color: "var(--airbnb-muted)", lineHeight: 1.5 }}>
+            Each sub-query fetches top_k × multiplier candidates before RRF ranking. Raise for very long documents (100+ pages).
+          </p>
+        </Field>
+
+        {/* multi_query */}
+        <Field label="Multi-query retrieval">
+          <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={config.multi_query}
+              onChange={(e) => handleChange("multi_query", e.target.checked)}
+              style={{ width: "16px", height: "16px", cursor: "pointer" }}
+            />
+            <span style={{ fontSize: "13px", color: "var(--airbnb-body)" }}>
+              Enabled — fires parallel searches for each entity when the question references multiple rules/sections
+            </span>
+          </label>
+        </Field>
+
+        <div style={{ height: "1px", background: "var(--airbnb-hairline)" }} />
+
+        {/* chunk_size */}
+        <Field label="Chunk size (characters)" hint="⚠ requires re-indexing">
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <input
+              type="range" min={200} max={8000} step={100} value={config.chunk_size}
+              onChange={(e) => handleChange("chunk_size", parseInt(e.target.value))}
+              style={{ flex: 1 }}
+            />
+            <input
+              type="number" min={200} max={8000} step={100} value={config.chunk_size}
+              onChange={(e) => handleChange("chunk_size", Math.max(200, Math.min(8000, parseInt(e.target.value) || 1500)))}
+              style={{ ...inputStyle, width: "72px", flexShrink: 0 }}
+            />
+          </div>
+          <p style={{ margin: "4px 0 0", fontSize: "11px", color: "var(--airbnb-muted)", lineHeight: 1.5 }}>
+            Larger = complete rules/paragraphs stay together. Smaller = more precise page citations.
+          </p>
+        </Field>
+
+        {/* chunk_overlap */}
+        <Field label="Chunk overlap (characters)" hint="⚠ requires re-indexing">
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <input
+              type="range" min={0} max={Math.floor(config.chunk_size * 0.49)} step={50} value={config.chunk_overlap}
+              onChange={(e) => handleChange("chunk_overlap", parseInt(e.target.value))}
+              style={{ flex: 1 }}
+            />
+            <input
+              type="number" min={0} max={config.chunk_size - 1} step={50} value={config.chunk_overlap}
+              onChange={(e) => handleChange("chunk_overlap", Math.max(0, Math.min(config.chunk_size - 1, parseInt(e.target.value) || 0)))}
+              style={{ ...inputStyle, width: "72px", flexShrink: 0 }}
+            />
+          </div>
+          <p style={{ margin: "4px 0 0", fontSize: "11px", color: "var(--airbnb-muted)", lineHeight: 1.5 }}>
+            Overlap ensures rule headers always co-occur with their content in at least one chunk.
+          </p>
+        </Field>
+
+        {reindexWarning && (
+          <div style={{ padding: "10px 14px", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "var(--radius-sm)" }}>
+            <p style={{ margin: 0, fontSize: "12px", color: "#92400e", lineHeight: 1.5 }}>
+              <strong>Re-indexing required.</strong> You changed chunk_size or chunk_overlap. New uploads will use these values immediately. Existing documents must be re-indexed to benefit — use the re-index option on each document after saving.
+            </p>
+          </div>
+        )}
+
+        {error && <p style={{ fontSize: "13px", color: "#ef4444", margin: 0 }}>{error}</p>}
+        <button onClick={handleSave} disabled={saving} style={{ ...primaryBtnStyle, width: "fit-content" }}>
+          {saving ? "Saving…" : saved ? "✓ Saved" : "Save configuration"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+
+/* ── Users ──────────────────────────────────────────────────── */
 
 function UsersSection({ currentUserId }: { currentUserId: string }) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ email: "", display_name: "", password: "", role: "member" });
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     api.admin.listUsers().then(setUsers).finally(() => setLoading(false));
@@ -187,62 +457,19 @@ function UsersSection({ currentUserId }: { currentUserId: string }) {
     }
   }
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setCreating(true);
-    setCreateError(null);
-    try {
-      const newUser = await api.admin.createUser(form);
-      setUsers((prev) => [...prev, newUser]);
-      setForm({ email: "", display_name: "", password: "", role: "member" });
-      setShowCreate(false);
-    } catch (e) {
-      setCreateError(e instanceof ApiError ? e.message : "Failed to create user");
-    } finally {
-      setCreating(false);
-    }
-  }
-
   return (
-    <section id="users">
+    <section style={{ position: "relative" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "24px" }}>
-        <SectionHeader title="Users" subtitle="Create accounts and set global roles. Assign workspace access in the Workspaces section below." />
-        {!showCreate && (
-          <button onClick={() => setShowCreate(true)} style={{ ...primaryBtnStyle, flexShrink: 0, marginTop: "4px" }}>+ New user</button>
-        )}
+        <SectionHeader title="Users" subtitle="Create accounts and set global roles. Assign workspace access in Workspaces & Members." />
+        <button onClick={() => setShowModal(true)} style={{ ...primaryBtnStyle, flexShrink: 0, marginTop: "4px" }}>
+          + New user
+        </button>
       </div>
-
-      {showCreate && (
-        <form onSubmit={handleCreate} style={{ display: "grid", gap: "12px", maxWidth: "420px", padding: "16px", border: "1px solid var(--airbnb-hairline)", borderRadius: "var(--radius-sm)", background: "var(--airbnb-surface-soft)", marginBottom: "20px" }}>
-          <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: "var(--airbnb-ink)" }}>Create new user</p>
-          <Field label="Email">
-            <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} autoFocus />
-          </Field>
-          <Field label="Display name (optional)">
-            <input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} style={inputStyle} />
-          </Field>
-          <Field label="Temporary password">
-            <input type="password" required minLength={6} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={inputStyle} autoComplete="new-password" />
-          </Field>
-          <Field label="Global role">
-            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} style={selectStyle}>
-              <option value="viewer">viewer — chat only</option>
-              <option value="member">member — upload + chat</option>
-              <option value="admin">admin — full access</option>
-            </select>
-          </Field>
-          {createError && <p style={{ fontSize: "12px", color: "#ef4444", margin: 0 }}>{createError}</p>}
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button type="submit" disabled={creating} style={primaryBtnStyle}>{creating ? "Creating…" : "Create user"}</button>
-            <button type="button" onClick={() => { setShowCreate(false); setCreateError(null); }} style={ghostBtnStyle}>Cancel</button>
-          </div>
-        </form>
-      )}
 
       {loading ? (
         <p style={{ fontSize: "13px", color: "var(--airbnb-muted)" }}>Loading…</p>
       ) : (
-        <div style={{ border: "1px solid var(--airbnb-hairline)", borderRadius: "var(--radius-sm)", overflow: "hidden", maxWidth: "640px" }}>
+        <div style={{ border: "1px solid var(--airbnb-hairline)", borderRadius: "var(--radius-sm)", overflow: "hidden", maxWidth: "660px" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
             <thead>
               <tr style={{ background: "var(--airbnb-surface-soft)" }}>
@@ -280,11 +507,97 @@ function UsersSection({ currentUserId }: { currentUserId: string }) {
           </table>
         </div>
       )}
+
+      {showModal && (
+        <NewUserModal
+          onClose={() => setShowModal(false)}
+          onCreated={(u) => { setUsers((prev) => [...prev, u]); setShowModal(false); }}
+        />
+      )}
     </section>
   );
 }
 
-/* ── Workspaces & Members ─────────────────────────────────── */
+function NewUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: (u: AdminUser) => void }) {
+  const [form, setForm] = useState({ email: "", display_name: "", password: "", role: "member" });
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setCreating(true);
+    setError(null);
+    try {
+      const user = await api.admin.createUser(form);
+      onCreated(user);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to create user");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 100, backdropFilter: "blur(2px)" }}
+      />
+      {/* Modal */}
+      <div style={{
+        position: "fixed", top: "50%", left: "50%",
+        transform: "translate(-50%, -50%)",
+        zIndex: 101, background: "var(--airbnb-canvas)",
+        border: "1px solid var(--airbnb-hairline)",
+        borderRadius: "var(--radius-md)", padding: "28px 32px",
+        width: "100%", maxWidth: "420px",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
+          <h2 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "var(--airbnb-ink)" }}>Create new user</h2>
+          <button
+            onClick={onClose}
+            style={{ width: "28px", height: "28px", borderRadius: "50%", border: "none", background: "var(--airbnb-surface-strong)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M1 1l8 8M9 1L1 9" stroke="#6a6a6a" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <Field label="Email address">
+            <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} autoFocus />
+          </Field>
+          <Field label="Display name (optional)">
+            <input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} style={inputStyle} />
+          </Field>
+          <Field label="Temporary password">
+            <input type="password" required minLength={6} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={inputStyle} autoComplete="new-password" />
+          </Field>
+          <Field label="Global role">
+            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} style={selectStyle}>
+              <option value="viewer">viewer — chat only</option>
+              <option value="member">member — upload + chat</option>
+              <option value="admin">admin — full access</option>
+            </select>
+          </Field>
+          {error && <p style={{ fontSize: "12px", color: "#ef4444", margin: 0 }}>{error}</p>}
+          <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+            <button type="submit" disabled={creating} style={{ ...primaryBtnStyle, flex: 1 }}>
+              {creating ? "Creating…" : "Create user"}
+            </button>
+            <button type="button" onClick={onClose} style={ghostBtnStyle}>Cancel</button>
+          </div>
+        </form>
+      </div>
+    </>
+  );
+}
+
+
+/* ── Workspaces & Members ───────────────────────────────────── */
 
 function WorkspacesSection() {
   const { apiWorkspaces, setApiWorkspaces } = useStore();
@@ -313,9 +626,9 @@ function WorkspacesSection() {
   }
 
   return (
-    <section id="workspaces">
+    <section>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "24px" }}>
-        <SectionHeader title="Workspaces & Members" subtitle="Only admins can create workspaces. Add users to workspaces and set their per-workspace role." />
+        <SectionHeader title="Workspaces & Members" subtitle="Only admins can create workspaces. Add users and set their per-workspace role." />
         {!showCreate && (
           <button onClick={() => setShowCreate(true)} style={{ ...primaryBtnStyle, flexShrink: 0, marginTop: "4px" }}>+ New workspace</button>
         )}
@@ -338,7 +651,7 @@ function WorkspacesSection() {
         </form>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxWidth: "600px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxWidth: "640px" }}>
         {apiWorkspaces.map((ws) => (
           <WorkspaceRow
             key={ws.id}
@@ -362,7 +675,6 @@ function WorkspaceRow({ workspace, expanded, onToggle }: { workspace: ApiWorkspa
   const [addError, setAddError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"members" | "llm">("members");
 
-  // Per-workspace LLM override state
   const [llmCfg, setLlmCfg] = useState<LLMConfig | null>(null);
   const [llmLoading, setLlmLoading] = useState(false);
   const [llmSaving, setLlmSaving] = useState(false);
@@ -373,13 +685,9 @@ function WorkspaceRow({ workspace, expanded, onToggle }: { workspace: ApiWorkspa
   useEffect(() => {
     if (!expanded) return;
     setLoading(true);
-    Promise.all([
-      api.admin.listMembers(workspace.id),
-      api.admin.listUsers(),
-    ]).then(([mems, users]) => {
-      setMembers(mems);
-      setAllUsers(users);
-    }).finally(() => setLoading(false));
+    Promise.all([api.admin.listMembers(workspace.id), api.admin.listUsers()])
+      .then(([mems, users]) => { setMembers(mems); setAllUsers(users); })
+      .finally(() => setLoading(false));
   }, [expanded, workspace.id]);
 
   useEffect(() => {
@@ -474,7 +782,6 @@ function WorkspaceRow({ workspace, expanded, onToggle }: { workspace: ApiWorkspa
 
       {expanded && (
         <div style={{ borderTop: "1px solid var(--airbnb-hairline)", background: "var(--airbnb-canvas)" }}>
-          {/* Sub-tabs */}
           <div style={{ display: "flex", borderBottom: "1px solid var(--airbnb-hairline)", background: "var(--airbnb-surface-soft)" }}>
             {(["members", "llm"] as const).map((tab) => (
               <button key={tab} onClick={() => setActiveTab(tab)} style={{
@@ -499,9 +806,7 @@ function WorkspaceRow({ workspace, expanded, onToggle }: { workspace: ApiWorkspa
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", marginBottom: "12px" }}>
                       <thead>
                         <tr style={{ borderBottom: "1px solid var(--airbnb-hairline)" }}>
-                          <Th>Member</Th>
-                          <Th>Role</Th>
-                          <Th></Th>
+                          <Th>Member</Th><Th>Role</Th><Th></Th>
                         </tr>
                       </thead>
                       <tbody>
@@ -530,15 +835,12 @@ function WorkspaceRow({ workspace, expanded, onToggle }: { workspace: ApiWorkspa
                       </tbody>
                     </table>
                   )}
-
                   {nonMembers.length > 0 && (
                     <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
                       <select value={addUserId} onChange={(e) => setAddUserId(e.target.value)}
                         style={{ ...selectStyle, flex: 1, minWidth: "160px" }}>
                         <option value="">Select user to add…</option>
-                        {nonMembers.map((u) => (
-                          <option key={u.id} value={u.id}>{u.display_name ?? u.email}</option>
-                        ))}
+                        {nonMembers.map((u) => <option key={u.id} value={u.id}>{u.display_name ?? u.email}</option>)}
                       </select>
                       <select value={addRole} onChange={(e) => setAddRole(e.target.value)}
                         style={{ ...selectStyle, width: "110px" }}>
@@ -553,10 +855,10 @@ function WorkspaceRow({ workspace, expanded, onToggle }: { workspace: ApiWorkspa
                   )}
                   {addError && <p style={{ fontSize: "12px", color: "#ef4444", marginTop: "6px", marginBottom: 0 }}>{addError}</p>}
                   {nonMembers.length === 0 && members.length > 0 && (
-                    <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: 0 }}>All users are already members of this workspace.</p>
+                    <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: 0 }}>All users are already members.</p>
                   )}
                   {members.length === 0 && nonMembers.length === 0 && (
-                    <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: 0 }}>No users yet. Create users in the Users section above.</p>
+                    <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: 0 }}>No users yet. Create users in the Users section.</p>
                   )}
                 </>
               )
@@ -601,9 +903,7 @@ function WorkspaceRow({ workspace, expanded, onToggle }: { workspace: ApiWorkspa
                     <button onClick={handleLlmSave} disabled={llmSaving} style={primaryBtnStyle}>
                       {llmSaving ? "Saving…" : llmSaved ? "✓ Saved" : "Save override"}
                     </button>
-                    <button onClick={handleLlmClear} disabled={llmSaving} style={ghostBtnStyle}>
-                      Clear override
-                    </button>
+                    <button onClick={handleLlmClear} disabled={llmSaving} style={ghostBtnStyle}>Clear override</button>
                   </div>
                 </div>
               ) : null
@@ -615,12 +915,13 @@ function WorkspaceRow({ workspace, expanded, onToggle }: { workspace: ApiWorkspa
   );
 }
 
-/* ── Reusable ─────────────────────────────────────────────── */
+
+/* ── Shared components ──────────────────────────────────────── */
 
 function SectionHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div style={{ marginBottom: "0" }}>
-      <h2 style={{ fontSize: "16px", fontWeight: 700, color: "var(--airbnb-ink)", margin: "0 0 4px" }}>{title}</h2>
+    <div style={{ marginBottom: "24px" }}>
+      <h2 style={{ fontSize: "18px", fontWeight: 700, color: "var(--airbnb-ink)", margin: "0 0 4px" }}>{title}</h2>
       <p style={{ fontSize: "13px", color: "var(--airbnb-muted)", margin: 0, lineHeight: 1.5 }}>{subtitle}</p>
     </div>
   );
@@ -640,7 +941,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 function Th({ children }: { children?: React.ReactNode }) {
   return (
-    <th style={{ padding: "8px 0", textAlign: "left", fontSize: "11px", fontWeight: 700, color: "var(--airbnb-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+    <th style={{ padding: "10px 16px", textAlign: "left", fontSize: "11px", fontWeight: 700, color: "var(--airbnb-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
       {children}
     </th>
   );
