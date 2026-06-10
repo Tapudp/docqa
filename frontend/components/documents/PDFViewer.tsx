@@ -113,7 +113,6 @@ export default function PDFViewer({ documentId, page, onPageChange, totalPages, 
         }}
         onLoadError={(err) => setError(err.message)}
         loading={null}
-        style={{ width: "100%" }}
       >
         <Page
           key={`${documentId}-${page}-${zoom}`}
