@@ -92,10 +92,10 @@ export default function PDFViewer({ documentId, page, onPageChange, totalPages, 
 
   const maxPage = numPages ?? totalPages ?? 999;
 
-  const pageWidth = Math.floor((containerWidth - 24) * zoom);
+  const pageWidth = Math.floor(containerWidth * zoom);
 
   return (
-    <div ref={containerRef} style={{ flex: 1, overflowY: "auto", overflowX: zoom > 1 ? "auto" : "hidden", padding: "12px", background: "#f0f0f0" }}>
+    <div ref={containerRef} style={{ flex: 1, overflowY: "auto", overflowX: zoom > 1 ? "auto" : "hidden", padding: "8px", background: "#f0f0f0" }}>
       <Document
         file={blobUrl}
         onLoadSuccess={({ numPages: n }) => {
