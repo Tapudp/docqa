@@ -10,8 +10,8 @@ class TextChunk:
 
 def chunk_document(
     page_texts: list[str],
-    chunk_size: int = 800,
-    overlap: int = 120,
+    chunk_size: int = 1500,
+    overlap: int = 300,
 ) -> list[TextChunk]:
     """
     Slide a window over the full document text while tracking which page
