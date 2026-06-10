@@ -95,7 +95,7 @@ export default function PDFViewer({ documentId, page, onPageChange, totalPages, 
   const pageWidth = Math.floor(containerWidth * zoom);
 
   return (
-    <div ref={containerRef} style={{ flex: 1, overflowY: "auto", overflowX: zoom > 1 ? "auto" : "hidden", padding: "8px", background: "#f0f0f0" }}>
+    <div ref={containerRef} style={{ flex: 1, overflowY: "auto", overflowX: zoom > 1 ? "auto" : "hidden", padding: 0, background: "#f0f0f0" }}>
       <Document
         file={blobUrl}
         onLoadSuccess={({ numPages: n }) => {
