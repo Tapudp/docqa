@@ -19,6 +19,35 @@ class SearchResult:
     score: float
 
 
+def _diversify(pool: list[SearchResult], top_k: int, min_per_doc: int = 2) -> list[SearchResult]:
+    """
+    Guarantee each document that appears in `pool` gets at least `min_per_doc`
+    slots in the final output, then fill remaining slots by global score order.
+
+    This prevents a single high-scoring document from monopolising all top_k
+    results when the workspace contains multiple documents.
+    """
+    by_doc: dict[str, list[SearchResult]] = {}
+    for r in pool:
+        by_doc.setdefault(r.document_id, []).append(r)
+
+    # Guaranteed: best min_per_doc from every document (already sorted by score)
+    guaranteed: list[SearchResult] = []
+    guaranteed_ids: set[str] = set()
+    for doc_chunks in by_doc.values():
+        for r in doc_chunks[:min_per_doc]:
+            guaranteed.append(r)
+            guaranteed_ids.add(r.chunk_id)
+
+    # Fill remaining budget with global best, skipping already-guaranteed chunks
+    remaining_budget = max(0, top_k - len(guaranteed))
+    extras = [r for r in pool if r.chunk_id not in guaranteed_ids][:remaining_budget]
+
+    final = guaranteed + extras
+    final.sort(key=lambda r: r.score, reverse=True)
+    return final[:top_k]
+
+
 async def hybrid_search(
     db: AsyncSession,
     workspace_id: UUID,
@@ -30,14 +59,10 @@ async def hybrid_search(
     query_vec = await loop.run_in_executor(None, lambda: embed_texts([query])[0])
     vec_literal = "[" + ",".join(str(x) for x in query_vec) + "]"
 
-    # Cast a wider net before RRF so deep-document content isn't missed.
-    # inner_k is how many candidates each sub-query contributes; final output is top_k.
     inner_k = max(top_k * inner_k_multiplier, 50)
+    # Fetch a larger pool so diversification has material to work with
+    combined_k = top_k * 3
 
-    # Vector similarity (cosine) + PostgreSQL full-text search combined via RRF.
-    # FTS uses websearch_to_tsquery which handles numbers and partial phrases better
-    # than plainto_tsquery, and uses OR across tokens so "161" matches even without
-    # "rule" in the same chunk.
     sql = text("""
         WITH vector_hits AS (
             SELECT
@@ -92,7 +117,7 @@ async def hybrid_search(
             FROM vector_hits v
             FULL OUTER JOIN fts_hits f ON f.id = v.id
         )
-        SELECT * FROM combined ORDER BY rrf_score DESC LIMIT :top_k
+        SELECT * FROM combined ORDER BY rrf_score DESC LIMIT :combined_k
     """)
 
     rows = await db.execute(sql, {
@@ -100,11 +125,11 @@ async def hybrid_search(
         "ws_id": workspace_id,
         "q": query,
         "inner_k": inner_k,
-        "top_k": top_k,
+        "combined_k": combined_k,
     })
-    results = []
+    pool = []
     for row in rows.mappings():
-        results.append(SearchResult(
+        pool.append(SearchResult(
             chunk_id=str(row["id"]),
             document_id=str(row["document_id"]),
             filename=row["filename"],
@@ -113,4 +138,5 @@ async def hybrid_search(
             page_numbers=row["page_numbers"] or [],
             score=float(row["rrf_score"]),
         ))
-    return results
+
+    return _diversify(pool, top_k)

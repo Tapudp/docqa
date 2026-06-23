@@ -251,10 +251,29 @@ async def chat(
         for h in hits
     ]
 
-    context_chunks = [
-        f"[{h.filename}, p.{','.join(str(p) for p in h.page_numbers)}]\n{h.text}"
-        for h in hits
-    ]
+    # Group chunks by document so the LLM sees clear document boundaries.
+    # This prevents cross-document attribution errors (e.g. answering about
+    # doc A with content from doc B that happens to have a similar score).
+    doc_order: list[str] = []
+    doc_map: dict[str, tuple[str, list]] = {}  # doc_id -> (filename, [hits])
+    for h in hits:
+        if h.document_id not in doc_map:
+            doc_map[h.document_id] = (h.filename, [])
+            doc_order.append(h.document_id)
+        doc_map[h.document_id][1].append(h)
+
+    context_parts: list[str] = []
+    for doc_id in doc_order:
+        filename, doc_hits = doc_map[doc_id]
+        header = f"{'=' * 56}\nDOCUMENT: {filename}\n{'=' * 56}"
+        chunk_strs = [
+            f"[Page{'s' if len(h.page_numbers) > 1 else ''} "
+            f"{', '.join(str(p) for p in h.page_numbers)}]\n{h.text}"
+            for h in doc_hits
+        ]
+        context_parts.append(header + "\n\n" + "\n\n".join(chunk_strs))
+
+    context_chunks = ["\n\n\n".join(context_parts)]
 
     # Load conversation history (last 10 exchanges)
     history_result = await db.execute(
