@@ -202,40 +202,18 @@ export async function downloadExcel(content: string, filename = "response.xlsx")
 }
 
 // ── Mermaid PNG ───────────────────────────────────────────────
+// Use html2canvas to screenshot the rendered diagram element — more reliable than
+// SVG serialization + canvas drawImage, which breaks on mermaid's embedded styles.
 
-export async function downloadMermaidPNG(svgElement: SVGElement, filename = "diagram.png") {
-  const bbox = svgElement.getBoundingClientRect();
-  const scale = 2;
-  const w = Math.max(bbox.width, 200);
-  const h = Math.max(bbox.height, 100);
-
-  // Serialize and ensure explicit dimensions so the browser img element loads correctly
-  const clone = svgElement.cloneNode(true) as SVGElement;
-  clone.setAttribute("width", String(w));
-  clone.setAttribute("height", String(h));
-  const svgStr = new XMLSerializer().serializeToString(clone);
-
-  const svgBlob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(svgBlob);
-
-  return new Promise<void>((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = w * scale;
-      canvas.height = h * scale;
-      const ctx = canvas.getContext("2d")!;
-      ctx.scale(scale, scale);
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, w, h);
-      ctx.drawImage(img, 0, 0, w, h);
-      URL.revokeObjectURL(url);
-      canvas.toBlob((blob) => {
-        if (blob) triggerDownload(blob, filename);
-        resolve();
-      }, "image/png");
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(); };
-    img.src = url;
+export async function downloadMermaidPNG(diagramContainer: HTMLElement, filename = "diagram.png") {
+  const { default: html2canvas } = await import("html2canvas");
+  const canvas = await html2canvas(diagramContainer, {
+    scale: 2,
+    backgroundColor: "#ffffff",
+    logging: false,
+    useCORS: true,
   });
+  canvas.toBlob((blob) => {
+    if (blob) triggerDownload(blob, filename);
+  }, "image/png");
 }

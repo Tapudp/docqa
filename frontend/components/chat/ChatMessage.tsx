@@ -36,16 +36,13 @@ function MermaidBlock({ code }: { code: string }) {
     return () => { cancelled = true; };
   }, [code]);
 
-  const getSVGElement = () => containerRef.current?.querySelector("svg") ?? null;
-
   const handleDownloadSVG = () => {
     const blob = new Blob([svg], { type: "image/svg+xml" });
     triggerDownload(blob, "diagram.svg");
   };
 
   const handleDownloadPNG = async () => {
-    const el = getSVGElement();
-    if (el) await downloadMermaidPNG(el, "diagram.png");
+    if (containerRef.current) await downloadMermaidPNG(containerRef.current, "diagram.png");
   };
 
   const handleDownloadSource = () => {
