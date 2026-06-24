@@ -5,12 +5,22 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ApiMessage } from "@/lib/types";
 import CitationBadge from "./CitationBadge";
+import {
+  triggerDownload,
+  downloadMarkdown,
+  downloadPDF,
+  downloadDocx,
+  downloadExcel,
+  downloadMermaidPNG,
+  hasTables,
+} from "@/lib/downloadUtils";
 
 // ── Mermaid diagram block ─────────────────────────────────────
 
 function MermaidBlock({ code }: { code: string }) {
   const [svg, setSvg] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const containerRef = useRef<HTMLDivElement>(null);
   const idRef = useRef(`mermaid-${Math.random().toString(36).slice(2)}`);
 
   useEffect(() => {
@@ -26,14 +36,20 @@ function MermaidBlock({ code }: { code: string }) {
     return () => { cancelled = true; };
   }, [code]);
 
-  const downloadSVG = () => {
+  const getSVGElement = () => containerRef.current?.querySelector("svg") ?? null;
+
+  const handleDownloadSVG = () => {
     const blob = new Blob([svg], { type: "image/svg+xml" });
     triggerDownload(blob, "diagram.svg");
   };
 
-  const downloadSource = () => {
-    const blob = new Blob([code], { type: "text/plain" });
-    triggerDownload(blob, "diagram.mmd");
+  const handleDownloadPNG = async () => {
+    const el = getSVGElement();
+    if (el) await downloadMermaidPNG(el, "diagram.png");
+  };
+
+  const handleDownloadSource = () => {
+    triggerDownload(new Blob([code], { type: "text/plain" }), "diagram.mmd");
   };
 
   return (
@@ -51,12 +67,16 @@ function MermaidBlock({ code }: { code: string }) {
         </span>
         {svg && (
           <div style={{ display: "flex", gap: "6px" }}>
-            <DownloadChip label="SVG" onClick={downloadSVG} primary />
-            <DownloadChip label=".mmd" onClick={downloadSource} />
+            <FormatChip label="SVG" onClick={handleDownloadSVG} primary />
+            <FormatChip label="PNG" onClick={handleDownloadPNG} primary />
+            <FormatChip label=".mmd" onClick={handleDownloadSource} />
           </div>
         )}
       </div>
-      <div style={{ padding: "20px", background: "white", display: "flex", justifyContent: "center", minHeight: "80px", alignItems: "center" }}>
+      <div
+        ref={containerRef}
+        style={{ padding: "20px", background: "white", display: "flex", justifyContent: "center", minHeight: "80px", alignItems: "center" }}
+      >
         {error ? (
           <span style={{ color: "#dc2626", fontSize: "13px" }}>Failed to render: {error}</span>
         ) : svg ? (
@@ -69,7 +89,7 @@ function MermaidBlock({ code }: { code: string }) {
   );
 }
 
-// ── Generic code block ────────────────────────────────────────
+// ── Code block ────────────────────────────────────────────────
 
 function CodeBlock({ language, code }: { language: string; code: string }) {
   const [copied, setCopied] = useState(false);
@@ -95,17 +115,14 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
         <button onClick={copy} style={{
           fontSize: "11px",
           color: copied ? "#4ade80" : "rgba(255,255,255,0.4)",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          padding: "2px 4px",
-          transition: "color 0.2s",
+          background: "none", border: "none", cursor: "pointer", padding: "2px 4px",
+          transition: "color 0.15s",
         }}>
           {copied ? "✓ copied" : "copy"}
         </button>
       </div>
       <pre style={{ background: "#0f0f1a", margin: 0, padding: "14px 16px", overflowX: "auto" }}>
-        <code style={{ fontSize: "13px", color: "#c9d1d9", fontFamily: "'JetBrains Mono', 'Fira Code', monospace", lineHeight: 1.65, whiteSpace: "pre" }}>
+        <code style={{ fontSize: "13px", color: "#c9d1d9", fontFamily: "'JetBrains Mono','Fira Code',monospace", lineHeight: 1.65, whiteSpace: "pre" }}>
           {code}
         </code>
       </pre>
@@ -113,33 +130,31 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   );
 }
 
-// ── Shared helpers ────────────────────────────────────────────
+// ── Format chip button ────────────────────────────────────────
 
-function triggerDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function DownloadChip({ label, onClick, primary }: { label: string; onClick: () => void; primary?: boolean }) {
+function FormatChip({
+  label, onClick, primary, disabled,
+}: {
+  label: string; onClick: () => void; primary?: boolean; disabled?: boolean;
+}) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
+      title={disabled ? "No tables found in this response" : undefined}
       style={{
         fontSize: "11px",
         fontWeight: 600,
-        color: primary ? "var(--airbnb-rausch)" : "var(--airbnb-muted)",
+        color: disabled ? "var(--airbnb-hairline)" : primary ? "var(--airbnb-rausch)" : "var(--airbnb-muted)",
         background: "white",
-        border: `1px solid ${primary ? "var(--airbnb-rausch)" : "var(--airbnb-hairline)"}`,
+        border: `1px solid ${disabled ? "var(--airbnb-hairline)" : primary ? "var(--airbnb-rausch)" : "var(--airbnb-hairline)"}`,
         borderRadius: "4px",
-        padding: "2px 8px",
-        cursor: "pointer",
+        padding: "3px 9px",
+        cursor: disabled ? "not-allowed" : "pointer",
         display: "flex",
         alignItems: "center",
         gap: "3px",
+        opacity: disabled ? 0.45 : 1,
       }}
     >
       ↓ {label}
@@ -147,10 +162,9 @@ function DownloadChip({ label, onClick, primary }: { label: string; onClick: () 
   );
 }
 
-// ── Markdown renderer (used after streaming is done) ──────────
+// ── Markdown renderer ─────────────────────────────────────────
 
 const mdComponents: React.ComponentProps<typeof ReactMarkdown>["components"] = {
-  // Block code → mermaid diagram or syntax-highlighted code block
   pre({ children }) {
     const child = Array.isArray(children) ? children[0] : children;
     if (!child || typeof child !== "object") return <pre>{children}</pre>;
@@ -161,7 +175,6 @@ const mdComponents: React.ComponentProps<typeof ReactMarkdown>["components"] = {
     if (lang === "mermaid") return <MermaidBlock code={code} />;
     return <CodeBlock language={lang} code={code} />;
   },
-  // Inline code
   code({ children, className }) {
     if (className) return <code className={className}>{children}</code>;
     return (
@@ -178,58 +191,33 @@ const mdComponents: React.ComponentProps<typeof ReactMarkdown>["components"] = {
       </code>
     );
   },
-  // Headings
   h1: ({ children }) => <h1 style={{ fontSize: "20px", fontWeight: 700, margin: "16px 0 8px", color: "var(--airbnb-ink)" }}>{children}</h1>,
   h2: ({ children }) => <h2 style={{ fontSize: "17px", fontWeight: 700, margin: "14px 0 6px", color: "var(--airbnb-ink)" }}>{children}</h2>,
   h3: ({ children }) => <h3 style={{ fontSize: "15px", fontWeight: 600, margin: "12px 0 4px", color: "var(--airbnb-ink)" }}>{children}</h3>,
-  // Paragraphs & text
   p: ({ children }) => <p style={{ fontSize: "15px", lineHeight: 1.6, color: "var(--airbnb-body)", margin: "4px 0" }}>{children}</p>,
   strong: ({ children }) => <strong style={{ fontWeight: 600, color: "var(--airbnb-ink)" }}>{children}</strong>,
   em: ({ children }) => <em style={{ fontStyle: "italic" }}>{children}</em>,
-  // Lists
   ul: ({ children }) => <ul style={{ margin: "6px 0 6px 20px", display: "flex", flexDirection: "column", gap: "3px" }}>{children}</ul>,
   ol: ({ children }) => <ol style={{ margin: "6px 0 6px 20px", display: "flex", flexDirection: "column", gap: "3px" }}>{children}</ol>,
   li: ({ children }) => <li style={{ fontSize: "15px", lineHeight: 1.6, color: "var(--airbnb-body)" }}>{children}</li>,
-  // Blockquote
   blockquote: ({ children }) => (
-    <blockquote style={{
-      borderLeft: "3px solid var(--airbnb-rausch)",
-      paddingLeft: "12px",
-      margin: "8px 0",
-      color: "var(--airbnb-muted)",
-      fontStyle: "italic",
-    }}>
+    <blockquote style={{ borderLeft: "3px solid var(--airbnb-rausch)", paddingLeft: "12px", margin: "8px 0", color: "var(--airbnb-muted)", fontStyle: "italic" }}>
       {children}
     </blockquote>
   ),
-  // Tables
   table: ({ children }) => (
     <div style={{ overflowX: "auto", margin: "12px 0" }}>
       <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "14px" }}>{children}</table>
     </div>
   ),
   thead: ({ children }) => <thead style={{ background: "#f8f9fa" }}>{children}</thead>,
-  th: ({ children }) => (
-    <th style={{ border: "1px solid var(--airbnb-hairline)", padding: "8px 12px", textAlign: "left", fontWeight: 600, color: "var(--airbnb-ink)" }}>
-      {children}
-    </th>
-  ),
-  td: ({ children }) => (
-    <td style={{ border: "1px solid var(--airbnb-hairline)", padding: "8px 12px", color: "var(--airbnb-body)" }}>
-      {children}
-    </td>
-  ),
-  // Horizontal rule
+  th: ({ children }) => <th style={{ border: "1px solid var(--airbnb-hairline)", padding: "8px 12px", textAlign: "left", fontWeight: 600, color: "var(--airbnb-ink)" }}>{children}</th>,
+  td: ({ children }) => <td style={{ border: "1px solid var(--airbnb-hairline)", padding: "8px 12px", color: "var(--airbnb-body)" }}>{children}</td>,
   hr: () => <hr style={{ border: "none", borderTop: "1px solid var(--airbnb-hairline)", margin: "12px 0" }} />,
-  // Links
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--airbnb-rausch)", textDecoration: "underline" }}>
-      {children}
-    </a>
-  ),
+  a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--airbnb-rausch)", textDecoration: "underline" }}>{children}</a>,
 };
 
-// ── Simple streaming renderer (no markdown parsing during stream) ──
+// ── Simple streaming renderer ─────────────────────────────────
 
 function renderBoldText(text: string) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
@@ -280,17 +268,17 @@ function renderStreamContent(content: string) {
   return elements;
 }
 
-// ── Detect if content has rich structure worth downloading ────
+// ── Helpers ───────────────────────────────────────────────────
 
 function hasRichContent(content: string) {
   return /^#{1,3}\s|```|^\|.+\|/m.test(content);
 }
 
-// ── Main component ────────────────────────────────────────────
-
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
+
+// ── Main component ────────────────────────────────────────────
 
 interface Props {
   message: ApiMessage | { id: string; role: "user" | "assistant"; content: string; citations?: null; created_at: string };
@@ -299,11 +287,7 @@ interface Props {
 
 export default function ChatMessage({ message, isStreaming }: Props) {
   const isUser = message.role === "user";
-
-  const downloadMarkdown = () => {
-    const blob = new Blob([message.content], { type: "text/markdown" });
-    triggerDownload(blob, "response.md");
-  };
+  const contentRef = useRef<HTMLDivElement>(null);
 
   if (isUser) {
     return (
@@ -314,9 +298,7 @@ export default function ChatMessage({ message, isStreaming }: Props) {
           borderRadius: "var(--radius-md) var(--radius-md) 4px var(--radius-md)",
           padding: "12px 16px",
         }}>
-          <p style={{ fontSize: "15px", lineHeight: 1.55, color: "white", margin: 0 }}>
-            {message.content}
-          </p>
+          <p style={{ fontSize: "15px", lineHeight: 1.55, color: "white", margin: 0 }}>{message.content}</p>
           <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.7)", marginTop: "6px", textAlign: "right" }}>
             {formatTime(message.created_at)}
           </p>
@@ -326,21 +308,18 @@ export default function ChatMessage({ message, isStreaming }: Props) {
   }
 
   const citations = (message as ApiMessage).citations;
-  const rich = hasRichContent(message.content);
+  const content = message.content;
+  const rich = hasRichContent(content);
+  const withTables = hasTables(content);
+  const showDownloads = !isStreaming && (rich || content.length > 400);
 
   return (
     <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "4px 0" }}>
       {/* Avatar */}
       <div style={{
-        flexShrink: 0,
-        width: "32px",
-        height: "32px",
-        borderRadius: "var(--radius-full)",
-        background: "var(--airbnb-rausch)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        marginTop: "2px",
+        flexShrink: 0, width: "32px", height: "32px",
+        borderRadius: "var(--radius-full)", background: "var(--airbnb-rausch)",
+        display: "flex", alignItems: "center", justifyContent: "center", marginTop: "2px",
       }}>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path d="M3 4h10M3 8h7M3 12h9" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
@@ -355,48 +334,39 @@ export default function ChatMessage({ message, isStreaming }: Props) {
           padding: "14px 16px",
           boxShadow: "rgba(0,0,0,0.02) 0 1px 4px",
         }}>
-          {/* Thinking indicator */}
-          {isStreaming && !message.content.trim() ? (
+          {/* Thinking */}
+          {isStreaming && !content.trim() ? (
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <span style={{ fontSize: "22px", animation: "docqa-sway 1.6s ease-in-out infinite" }}>🤔</span>
               <span style={{ fontSize: "16px", fontWeight: 700, color: "var(--airbnb-ink)" }}>Thinking</span>
               <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
                 {[0, 1, 2].map((i) => (
                   <span key={i} style={{
-                    display: "inline-block",
-                    width: "8px",
-                    height: "8px",
-                    borderRadius: "50%",
-                    background: "var(--airbnb-ink)",
+                    display: "inline-block", width: "8px", height: "8px",
+                    borderRadius: "50%", background: "var(--airbnb-ink)",
                     animation: "docqa-bounce 1.2s ease-in-out infinite",
                     animationDelay: `${i * 0.2}s`,
                   }} />
                 ))}
               </span>
               <style>{`
-                @keyframes docqa-bounce { 0%,80%,100%{transform:translateY(0);opacity:.3} 40%{transform:translateY(-6px);opacity:1} }
-                @keyframes docqa-sway { 0%,100%{transform:rotate(-8deg)} 50%{transform:rotate(8deg)} }
+                @keyframes docqa-bounce{0%,80%,100%{transform:translateY(0);opacity:.3}40%{transform:translateY(-6px);opacity:1}}
+                @keyframes docqa-sway{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(8deg)}}
               `}</style>
             </div>
           ) : isStreaming ? (
-            // Simple renderer during stream to avoid mermaid flicker
-            <div style={{ display: "flex", flexDirection: "column", gap: "0px" }}>
-              {renderStreamContent(message.content)}
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {renderStreamContent(content)}
               <span style={{
-                display: "inline-block",
-                width: "2px",
-                height: "16px",
-                background: "var(--airbnb-rausch)",
-                marginLeft: "2px",
-                verticalAlign: "middle",
-                animation: "blink 1s step-end infinite",
+                display: "inline-block", width: "2px", height: "16px",
+                background: "var(--airbnb-rausch)", marginLeft: "2px",
+                verticalAlign: "middle", animation: "blink 1s step-end infinite",
               }} />
             </div>
           ) : (
-            // Full markdown render when done
-            <div style={{ display: "flex", flexDirection: "column" }}>
+            <div ref={contentRef} style={{ display: "flex", flexDirection: "column" }}>
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
-                {message.content}
+                {content}
               </ReactMarkdown>
             </div>
           )}
@@ -413,36 +383,32 @@ export default function ChatMessage({ message, isStreaming }: Props) {
             </div>
           )}
 
-          {/* Download bar — only when content has rich structure or is substantial */}
-          {!isStreaming && (rich || message.content.length > 400) && (
+          {/* Download bar */}
+          {showDownloads && (
             <div style={{
               marginTop: "12px",
               paddingTop: "10px",
               borderTop: "1px solid var(--airbnb-hairline-soft)",
               display: "flex",
-              justifyContent: "flex-end",
+              alignItems: "center",
+              gap: "6px",
+              flexWrap: "wrap",
             }}>
-              <button
-                onClick={downloadMarkdown}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  color: "var(--airbnb-muted)",
-                  background: "none",
-                  border: "1px solid var(--airbnb-hairline)",
-                  borderRadius: "4px",
-                  padding: "4px 10px",
-                  cursor: "pointer",
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M6 1v7M3.5 5.5L6 8l2.5-2.5M2 10h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                Download .md
-              </button>
+              <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--airbnb-muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginRight: "4px" }}>
+                Download as
+              </span>
+              <FormatChip label=".md" onClick={() => downloadMarkdown(content)} />
+              <FormatChip
+                label="PDF"
+                primary
+                onClick={() => { if (contentRef.current) downloadPDF(contentRef.current, "response.pdf"); }}
+              />
+              <FormatChip label="Word" onClick={() => downloadDocx(content, "response.docx")} />
+              <FormatChip
+                label="Excel"
+                onClick={() => downloadExcel(content, "response.xlsx")}
+                disabled={!withTables}
+              />
             </div>
           )}
         </div>
