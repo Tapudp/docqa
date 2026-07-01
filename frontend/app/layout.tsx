@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "NpuDen DocQA",
+  title: "REVERB by NpuDen",
   description: "Enterprise Document Intelligence — ask any question, get the exact answer with page citations.",
 };
 

@@ -213,7 +213,7 @@ export default function WorkspacePage() {
             </svg>
           </div>
           <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--airbnb-ink)", letterSpacing: "-0.2px" }}>
-            NpuDen DocQA
+            REVERB by NpuDen
           </span>
         </div>
 

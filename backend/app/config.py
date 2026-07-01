@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     llm_api_key: str = ""                 # for anthropic/openai
 
     # App
-    app_name: str = "NpuDen DocQA"
+    app_name: str = "REVERB by NpuDen"
     debug: bool = False
     allow_registration: bool = True   # set False to require admin-created accounts only
 

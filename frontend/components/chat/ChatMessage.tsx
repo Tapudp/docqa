@@ -412,7 +412,7 @@ export default function ChatMessage({ message, isStreaming }: Props) {
 
         {!isStreaming && (
           <p style={{ fontSize: "11px", color: "var(--airbnb-muted-soft)", marginTop: "4px", paddingLeft: "4px" }}>
-            DocQA · {formatTime(message.created_at)}
+            REVERB · {formatTime(message.created_at)}
           </p>
         )}
       </div>

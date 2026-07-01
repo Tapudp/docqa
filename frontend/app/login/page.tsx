@@ -76,7 +76,7 @@ export default function LoginPage() {
             </svg>
           </div>
           <span style={{ fontSize: "20px", fontWeight: 600, color: "var(--airbnb-ink)", letterSpacing: "-0.18px" }}>
-            NpuDen DocQA
+            REVERB by NpuDen
           </span>
         </div>
         <p style={{ marginTop: "8px", fontSize: "14px", color: "var(--airbnb-muted)" }}>
@@ -101,7 +101,7 @@ export default function LoginPage() {
           {mode === "login" ? "Sign in" : "Create account"}
         </h1>
         <p style={{ fontSize: "14px", color: "var(--airbnb-muted)", marginBottom: "28px" }}>
-          {mode === "login" ? "Welcome back to your workspace" : "Get started with NpuDen DocQA"}
+          {mode === "login" ? "Welcome back to your workspace" : "Get started with REVERB by NpuDen"}
         </p>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>

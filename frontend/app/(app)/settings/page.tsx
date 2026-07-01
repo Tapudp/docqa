@@ -135,14 +135,14 @@ function LLMSection() {
 
   if (!config) return (
     <section>
-      <SectionHeader title="LLM Configuration" subtitle="Configure which language model DocQA uses to answer questions." />
+      <SectionHeader title="LLM Configuration" subtitle="Configure which language model REVERB uses to answer questions." />
       <p style={{ fontSize: "13px", color: "var(--airbnb-muted)" }}>{error ?? "Loading…"}</p>
     </section>
   );
 
   return (
     <section>
-      <SectionHeader title="LLM Configuration" subtitle="Configure which language model DocQA uses. Changes take effect immediately — no restart needed." />
+      <SectionHeader title="LLM Configuration" subtitle="Configure which language model REVERB uses. Changes take effect immediately — no restart needed." />
       <div style={{ display: "grid", gap: "20px", maxWidth: "540px" }}>
         <Field label="Provider">
           <select value={config.provider} onChange={(e) => setConfig({ ...config, provider: e.target.value })} style={selectStyle}>
