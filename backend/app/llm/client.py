@@ -45,12 +45,15 @@ async def stream_chat(
         "2. The context is grouped by DOCUMENT. Each document section begins with a "
         "line showing its filename.\n"
         "3. Cite the exact document name and page number for every factual claim you make.\n"
-        "4. When the same topic appears in multiple documents, address each document "
-        "separately and note any differences between them.\n"
+        "4. When the same topic appears in multiple documents, you MUST cite every "
+        "document that contains relevant information — do not pick just one. Address "
+        "each document separately and note agreements, contradictions, or additions.\n"
         "5. Never attribute content from one document to another. Keep each document's "
         "information distinct.\n"
         "6. If the answer is not present in any document, say exactly: "
-        "'This information is not available in the uploaded documents.'\n\n"
+        "'This information is not available in the uploaded documents.'\n"
+        "7. When you see context from multiple DOCUMENT sections, your answer must "
+        "reference all sections that are relevant — never silently ignore a document.\n\n"
         "CONTEXT:\n"
         + "\n\n".join(context_chunks)
     )

@@ -170,6 +170,75 @@ Once the core product works end-to-end:
 
 ---
 
+## Phase 11 — Multi-Document Retrieval (SPD-RAG)
+
+**Goal:** When a workspace contains multiple documents, answers should draw from ALL relevant files — not just the largest or highest-scoring one.
+
+### Problem that existed before this phase
+
+REVERB used a single global hybrid search (pgvector cosine + PostgreSQL FTS merged via RRF). This is standard RAG — but it has a well-known failure mode: **vector search dilution**.
+
+If one large document (e.g. a 500-page GFR manual) contains many chunks that are semantically close to the query, those chunks dominate all `top_k` slots. Smaller documents — even if they contain directly relevant information — never appear in the retrieved context. The LLM then answers purely from the dominant document and silently ignores the others.
+
+Symptoms before the fix:
+- Upload 3 policy documents, ask about a shared topic → only Document A is cited
+- Asking "compare X across all files" → LLM says "only found in Document A" even though B and C have it
+
+### Root cause analysis
+
+The original `_diversify()` function attempted to guarantee 2 chunks per document. But it had a silent overflow bug:
+
+```python
+remaining_budget = max(0, top_k - len(guaranteed))
+# With 10 docs × 2 guaranteed = 20, but top_k = 15:
+# remaining_budget = max(0, 15 - 20) = 0
+# all "extras" dropped, then final[:15] cuts 5 docs' guaranteed chunks too
+```
+
+Even if `_diversify()` had been bug-free, the upstream global search pool (`combined_k = top_k * 3 = 45`) might not contain all documents — a dominant document's chunks can fill the entire pool.
+
+### Research consulted
+
+See `RETRIEVAL_DESIGN.md` for full research notes. Key sources:
+- **SPD-RAG** (per-document parallel search pattern)
+- **"Vector search dilution"** — arxiv.org/abs/2606.11350
+- **MMR** (Maximal Marginal Relevance) — considered, deferred
+- **Metadata-filtered pgvector** — `AND c.document_id = :doc_id`
+
+### What was built
+
+**`backend/app/retrieval/search.py` — full rewrite:**
+
+| Before | After |
+|--------|-------|
+| 1 global SQL query across all docs | 1 SQL query per document, all run in parallel (`asyncio.gather`) |
+| `combined_k = top_k * 3 = 45` pool (can be dominated) | Isolated pool per document — no cross-doc crowding |
+| `_diversify()` with overflow bug | Guarantee via `floor(top_k / num_docs)` — mathematically cannot overflow |
+| Cross-document RRF scores compared directly | Per-doc RRF scores used for within-doc ranking; doc relevance determines budget fill order |
+
+**New retrieval flow:**
+1. `_fetch_ready_doc_ids()` — 1 query, gets all ready docs in workspace
+2. `_search_single_doc()` per document — RRF-hybrid SQL with `AND c.document_id = :doc_id`
+3. `asyncio.gather(...)` — all per-doc searches run concurrently (wall-clock ≈ slowest single query)
+4. Phase 1: each document gets `floor(top_k / num_docs)` guaranteed slots (min 2)
+5. Phase 2: remaining budget filled from globally highest-scored extras
+6. Return: ordered by document relevance (best doc first)
+
+**`backend/app/llm/client.py` — system prompt strengthened:**
+- Rule 4 updated: "you MUST cite every document that contains relevant information — do not pick just one"
+- Rule 7 added: "when you see context from multiple DOCUMENT sections, your answer must reference all sections that are relevant — never silently ignore a document"
+
+### End-of-phase checkpoint
+```
+✓ Upload 3 documents about overlapping topics
+✓ Ask a question covered in all 3 → answer cites all 3 with separate sections
+✓ Upload a large (500-page) doc + a small (20-page) doc → small doc still appears in answers
+✓ Single-document workspace → uses simple global search (fast path, no overhead)
+✓ Works correctly with multi-query path (compare Rule 155 and Rule 166)
+```
+
+---
+
 ## Quick Reference — Phase Status
 
 | Phase | What you get | Status |
@@ -185,6 +254,7 @@ Once the core product works end-to-end:
 | 8 — Team & Member Management | Admin invites users, assigns workspace access | ✅ Done |
 | 9 — RBAC + Per-workspace Config | Enforce viewer/member/admin roles, per-workspace LLM | ✅ Done |
 | 10 — Admin Bulk Upload | Admin selects a workspace and uploads dozens of docs at once | ✅ Done |
+| 11 — Multi-Document Retrieval | Per-document parallel search (SPD-RAG) ensures all files are cited | ✅ Done |
 
 ---
 
