@@ -1,6 +1,8 @@
 import type { ApiUser, ApiWorkspace, ApiDocument, ApiConversation, ApiMessage, TokenResponse, LLMConfig, OllamaModel, AdminUser, WorkspaceMember, BulkFileResult, RetrievalConfig } from "./types";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Empty string = relative URLs → Next.js rewrites proxy to the backend.
+// Override NEXT_PUBLIC_API_URL for local dev if running frontend separately (e.g. http://localhost:8000).
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
