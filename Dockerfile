@@ -65,10 +65,11 @@ COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ .
 
-# NEXT_PUBLIC_* vars are inlined at build time — pass the real
-# API hostname when running docker build:
+# NEXT_PUBLIC_* vars are inlined at build time.
+# Default is empty string — Next.js rewrites proxy /api/* to the backend service.
+# Override only when running outside K8s without the proxy:
 #   --build-arg NEXT_PUBLIC_API_URL=http://api.docqa.nid.local
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 RUN npm run build
