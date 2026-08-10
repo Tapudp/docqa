@@ -12,6 +12,7 @@ import ChatMessage from "@/components/chat/ChatMessage";
 import TypingIndicator from "@/components/chat/TypingIndicator";
 import UploadZone from "@/components/documents/UploadZone";
 import BulkUploadModal from "@/components/documents/BulkUploadModal";
+import WorkspaceLibrary from "@/components/documents/WorkspaceLibrary";
 
 export default function WorkspacePage() {
   const router = useRouter();
@@ -25,6 +26,7 @@ export default function WorkspacePage() {
     messages, setMessages, appendMessage,
     streamingContent, streamingCitations, isStreaming,
     appendStreamingToken, setStreamingCitations, setIsStreaming, clearStreaming,
+    viewMode,
   } = useStore();
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -221,7 +223,7 @@ export default function WorkspacePage() {
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--airbnb-body)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
-            {activeConv?.title ?? "New conversation"}
+            {viewMode === "library" ? "Document Library" : (activeConv?.title ?? "New conversation")}
           </span>
         </div>
 
@@ -342,126 +344,128 @@ export default function WorkspacePage() {
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
         <Sidebar />
 
-        <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "#fafafa" }}>
-          {/* Messages scroll */}
-          <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "28px 40px" }}>
-            {messages.length === 0 && !isStreaming && (
-              <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px", paddingBottom: "80px" }}>
-                <div style={{ width: "52px", height: "52px", borderRadius: "var(--radius-full)", background: "var(--airbnb-surface-strong)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-                    <path d="M19 13a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" stroke="#c1c1c1" strokeWidth="1.6" fill="none" />
-                  </svg>
+        {viewMode === "library" ? (
+          <WorkspaceLibrary />
+        ) : (
+          <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "#fafafa" }}>
+            {/* Messages scroll */}
+            <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "28px 40px" }}>
+              {messages.length === 0 && !isStreaming && (
+                <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px", paddingBottom: "80px" }}>
+                  <div style={{ width: "52px", height: "52px", borderRadius: "var(--radius-full)", background: "var(--airbnb-surface-strong)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                      <path d="M19 13a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" stroke="#c1c1c1" strokeWidth="1.6" fill="none" />
+                    </svg>
+                  </div>
+                  <p style={{ fontSize: "15px", fontWeight: 500, color: "var(--airbnb-muted)" }}>Ask anything about your documents</p>
+                  <p style={{ fontSize: "13px", color: "var(--airbnb-muted-soft)" }}>Answers come with page citations — click to view the source</p>
                 </div>
-                <p style={{ fontSize: "15px", fontWeight: 500, color: "var(--airbnb-muted)" }}>Ask anything about your documents</p>
-                <p style={{ fontSize: "13px", color: "var(--airbnb-muted-soft)" }}>Answers come with page citations — click to view the source</p>
-              </div>
-            )}
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "18px", maxWidth: "720px", margin: "0 auto" }}>
-              {messages.map((msg) => (
-                <ChatMessage key={msg.id} message={msg} />
-              ))}
-
-              {/* Thinking indicator — stays until full response received */}
-              {thinking && <TypingIndicator />}
-
-              {/* Streaming response — only shown after thinking is done */}
-              {!thinking && isStreaming && streamingContent && (
-                <ChatMessage
-                  message={{
-                    id: "streaming",
-                    conversation_id: activeConversationId ?? "",
-                    role: "assistant",
-                    content: streamingContent,
-                    citations: streamingCitations.length > 0 ? streamingCitations : null,
-                    created_at: new Date().toISOString(),
-                  }}
-                  isStreaming
-                />
               )}
 
-              <div ref={chatBottomRef} />
-            </div>
-          </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "18px", maxWidth: "720px", margin: "0 auto" }}>
+                {messages.map((msg) => (
+                  <ChatMessage key={msg.id} message={msg} />
+                ))}
 
-          {/* Input bar */}
-          <div style={{ borderTop: "1px solid var(--airbnb-hairline)", padding: "14px 40px 18px", background: "var(--airbnb-canvas)" }}>
-            <div
-              style={{
-                maxWidth: "720px",
-                margin: "0 auto",
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                background: "var(--airbnb-canvas)",
-                border: "1px solid var(--airbnb-hairline)",
-                borderRadius: "var(--radius-md)",
-                padding: "10px 12px 10px 16px",
-                boxShadow: "var(--shadow-card)",
-                transition: "border-color 0.15s ease",
-              }}
-              onFocusCapture={(e) => { e.currentTarget.style.borderColor = "var(--airbnb-ink)"; }}
-              onBlurCapture={(e) => { e.currentTarget.style.borderColor = "var(--airbnb-hairline)"; }}
-            >
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={readyDocCount === 0 ? "Upload and index documents first…" : "Ask a question about your documents…"}
-                disabled={isStreaming || readyDocCount === 0}
-                rows={1}
+                {thinking && <TypingIndicator />}
+
+                {!thinking && isStreaming && streamingContent && (
+                  <ChatMessage
+                    message={{
+                      id: "streaming",
+                      conversation_id: activeConversationId ?? "",
+                      role: "assistant",
+                      content: streamingContent,
+                      citations: streamingCitations.length > 0 ? streamingCitations : null,
+                      created_at: new Date().toISOString(),
+                    }}
+                    isStreaming
+                  />
+                )}
+
+                <div ref={chatBottomRef} />
+              </div>
+            </div>
+
+            {/* Input bar */}
+            <div style={{ borderTop: "1px solid var(--airbnb-hairline)", padding: "14px 40px 18px", background: "var(--airbnb-canvas)" }}>
+              <div
                 style={{
-                  flex: 1,
-                  resize: "none",
-                  border: "none",
-                  outline: "none",
-                  fontSize: "15px",
-                  lineHeight: "1.5",
-                  color: "var(--airbnb-ink)",
-                  background: "transparent",
-                  maxHeight: "160px",
-                  padding: 0,
-                  fontFamily: "inherit",
-                  opacity: readyDocCount === 0 ? 0.5 : 1,
-                }}
-              />
-              <button
-                onClick={handleSend}
-                disabled={!input.trim() || isStreaming || readyDocCount === 0}
-                style={{
-                  width: "34px",
-                  height: "34px",
-                  borderRadius: "var(--radius-full)",
-                  background: (!input.trim() || isStreaming || readyDocCount === 0) ? "var(--airbnb-surface-strong)" : "var(--airbnb-rausch)",
-                  border: "none",
-                  cursor: (!input.trim() || isStreaming || readyDocCount === 0) ? "not-allowed" : "pointer",
+                  maxWidth: "720px",
+                  margin: "0 auto",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  transition: "background-color 0.12s ease, transform 0.1s ease",
+                  gap: "10px",
+                  background: "var(--airbnb-canvas)",
+                  border: "1px solid var(--airbnb-hairline)",
+                  borderRadius: "var(--radius-md)",
+                  padding: "10px 12px 10px 16px",
+                  boxShadow: "var(--shadow-card)",
+                  transition: "border-color 0.15s ease",
                 }}
-                onMouseDown={(e) => { if (input.trim()) e.currentTarget.style.transform = "scale(0.92)"; }}
-                onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
-                onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                onFocusCapture={(e) => { e.currentTarget.style.borderColor = "var(--airbnb-ink)"; }}
+                onBlurCapture={(e) => { e.currentTarget.style.borderColor = "var(--airbnb-hairline)"; }}
               >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path
-                    d="M1.5 7h11M8.5 3l4 4-4 4"
-                    stroke={(!input.trim() || isStreaming) ? "#929292" : "white"}
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={readyDocCount === 0 ? "Upload and index documents first…" : "Ask a question about your documents…"}
+                  disabled={isStreaming || readyDocCount === 0}
+                  rows={1}
+                  style={{
+                    flex: 1,
+                    resize: "none",
+                    border: "none",
+                    outline: "none",
+                    fontSize: "15px",
+                    lineHeight: "1.5",
+                    color: "var(--airbnb-ink)",
+                    background: "transparent",
+                    maxHeight: "160px",
+                    padding: 0,
+                    fontFamily: "inherit",
+                    opacity: readyDocCount === 0 ? 0.5 : 1,
+                  }}
+                />
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim() || isStreaming || readyDocCount === 0}
+                  style={{
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "var(--radius-full)",
+                    background: (!input.trim() || isStreaming || readyDocCount === 0) ? "var(--airbnb-surface-strong)" : "var(--airbnb-rausch)",
+                    border: "none",
+                    cursor: (!input.trim() || isStreaming || readyDocCount === 0) ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    transition: "background-color 0.12s ease, transform 0.1s ease",
+                  }}
+                  onMouseDown={(e) => { if (input.trim()) e.currentTarget.style.transform = "scale(0.92)"; }}
+                  onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path
+                      d="M1.5 7h11M8.5 3l4 4-4 4"
+                      stroke={(!input.trim() || isStreaming) ? "#929292" : "white"}
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <p style={{ textAlign: "center", fontSize: "11px", color: "var(--airbnb-muted-soft)", marginTop: "8px" }}>
+                {readyDocCount} document{readyDocCount !== 1 ? "s" : ""} indexed · hybrid retrieval · Enter to send
+              </p>
             </div>
-            <p style={{ textAlign: "center", fontSize: "11px", color: "var(--airbnb-muted-soft)", marginTop: "8px" }}>
-              {readyDocCount} document{readyDocCount !== 1 ? "s" : ""} indexed · hybrid retrieval · Enter to send
-            </p>
-          </div>
-        </main>
+          </main>
+        )}
 
         <RightPanel />
       </div>

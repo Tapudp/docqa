@@ -62,6 +62,10 @@ interface DocQAStore {
   setUploadOpen: (open: boolean) => void;
   bulkUploadOpen: boolean;
   setBulkUploadOpen: (open: boolean) => void;
+
+  /* ── View mode ─────────────────────────────────────────── */
+  viewMode: "chat" | "library";
+  setViewMode: (mode: "chat" | "library") => void;
 }
 
 export const useStore = create<DocQAStore>((set) => ({
@@ -148,4 +152,8 @@ export const useStore = create<DocQAStore>((set) => ({
   setUploadOpen: (open) => set({ uploadOpen: open }),
   bulkUploadOpen: false,
   setBulkUploadOpen: (open) => set({ bulkUploadOpen: open }),
+
+  /* View mode */
+  viewMode: "chat",
+  setViewMode: (mode) => set({ viewMode: mode }),
 }));
