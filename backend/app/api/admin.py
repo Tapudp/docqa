@@ -689,3 +689,87 @@ async def remove_workspace_member(
 
     await db.delete(member)
     await db.commit()
+
+
+# ── Bulk tag import via Excel ─────────────────────────────────
+# Excel format: row 1 = headers (ignored), col A = filename,
+# col B onward = tag values. One file per row, multiple tags per row.
+# Empty cells are skipped. Tags are lowercased and deduplicated.
+
+class TagImportResult(BaseModel):
+    filename: str
+    status: str        # "updated" | "not_found" | "error"
+    tags: list[str] = []
+    reason: str | None = None
+
+
+@router.post("/workspaces/{workspace_id}/documents/tags/bulk", response_model=list[TagImportResult])
+async def admin_bulk_import_tags(
+    workspace_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """
+    Upload an Excel (.xlsx) file to set tags in bulk.
+
+    Format:
+      - Row 1: header row (skipped)
+      - Column A: filename (must match an existing document in this workspace)
+      - Column B+: tag values (one tag per cell; empty cells ignored)
+
+    Tags are lowercased, stripped, and deduplicated before saving.
+    Existing tags on a document are replaced entirely.
+    """
+    import openpyxl  # noqa: PLC0415
+
+    ws_obj = await db.get(Workspace, _uuid.UUID(workspace_id))
+    if not ws_obj:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    fname = (file.filename or "").lower()
+    if not fname.endswith(".xlsx"):
+        raise HTTPException(status_code=422, detail="File must be an .xlsx spreadsheet.")
+
+    data = await file.read()
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        ws_sheet = wb.active
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Could not read Excel file: {exc}")
+
+    # Build filename → document map for this workspace (case-insensitive key)
+    doc_result = await db.execute(
+        select(Document).where(Document.workspace_id == _uuid.UUID(workspace_id))
+    )
+    docs_by_name: dict[str, Document] = {
+        d.filename.lower(): d for d in doc_result.scalars().all()
+    }
+
+    results: list[TagImportResult] = []
+    rows = list(ws_sheet.iter_rows(min_row=2, values_only=True))  # skip header
+
+    for row in rows:
+        if not row or row[0] is None:
+            continue
+        filename = str(row[0]).strip()
+        if not filename:
+            continue
+
+        # Collect tags from all columns after the first
+        raw_tags = [str(cell).strip() for cell in row[1:] if cell is not None and str(cell).strip()]
+        normalized = list(dict.fromkeys(t.lower() for t in raw_tags))
+
+        doc = docs_by_name.get(filename.lower())
+        if not doc:
+            results.append(TagImportResult(filename=filename, status="not_found", reason="No document with this filename in the workspace"))
+            continue
+
+        try:
+            doc.tags = normalized
+            results.append(TagImportResult(filename=filename, status="updated", tags=normalized))
+        except Exception as exc:
+            results.append(TagImportResult(filename=filename, status="error", reason=str(exc)))
+
+    await db.commit()
+    return results

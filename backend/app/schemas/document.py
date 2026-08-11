@@ -20,5 +20,6 @@ class DocumentOut(BaseModel):
     failed_pages: Optional[list[int]]
     chunk_count: int
     error_message: Optional[str]
+    tags: list[str]
     created_at: datetime
     updated_at: datetime

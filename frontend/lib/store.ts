@@ -153,7 +153,7 @@ export const useStore = create<DocQAStore>((set) => ({
   bulkUploadOpen: false,
   setBulkUploadOpen: (open) => set({ bulkUploadOpen: open }),
 
-  /* View mode */
-  viewMode: "chat",
+  /* View mode — library is the landing page; chat activates when a conversation is selected */
+  viewMode: "library",
   setViewMode: (mode) => set({ viewMode: mode }),
 }));

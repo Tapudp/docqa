@@ -110,6 +110,14 @@ export interface ApiDocument {
   failed_pages: number[] | null;
   chunk_count: number;
   error_message: string | null;
+  tags: string[];
   created_at: string;
   updated_at: string;
+}
+
+export interface TagImportResult {
+  filename: string;
+  status: "updated" | "not_found" | "error";
+  tags: string[];
+  reason?: string;
 }

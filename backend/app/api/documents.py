@@ -1,8 +1,10 @@
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
-from sqlalchemy import select
+from pydantic import BaseModel
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import get_current_user
@@ -104,17 +106,52 @@ async def upload_document(
 @router.get("/workspaces/{workspace_id}/documents", response_model=list[DocumentOut])
 async def list_documents(
     workspace_id: uuid.UUID,
+    q: Annotated[str | None, Query(max_length=200)] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     await _require_workspace_role(workspace_id, current_user, db, min_role="viewer")
 
-    result = await db.execute(
-        select(Document)
-        .where(Document.workspace_id == workspace_id)
-        .order_by(Document.created_at.desc())
-    )
+    stmt = select(Document).where(Document.workspace_id == workspace_id)
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
+        # filename ILIKE OR any tag ILIKE (unnest converts array to rows for ILIKE)
+        stmt = stmt.where(
+            or_(
+                Document.filename.ilike(pattern),
+                Document.tags.any(func.cast(func.lower(q.strip()), type_=None) == func.lower(func.unnest(Document.tags))),
+                func.array_to_string(Document.tags, " ").ilike(pattern),
+            )
+        )
+    stmt = stmt.order_by(Document.created_at.desc())
+    result = await db.execute(stmt)
     return result.scalars().all()
+
+
+class TagsIn(BaseModel):
+    tags: list[str]
+
+
+@router.patch("/documents/{document_id}/tags", response_model=DocumentOut)
+async def set_document_tags(
+    document_id: uuid.UUID,
+    body: TagsIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Document).where(Document.id == document_id))
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    await _require_workspace_role(doc.workspace_id, current_user, db, min_role="member")
+
+    # Normalize: lowercase, strip whitespace, deduplicate, drop empty strings
+    normalized = list(dict.fromkeys(t.strip().lower() for t in body.tags if t.strip()))
+    doc.tags = normalized
+    await db.commit()
+    await db.refresh(doc)
+    return doc
 
 
 @router.get("/documents/{document_id}", response_model=DocumentOut)

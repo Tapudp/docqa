@@ -1,4 +1,4 @@
-import type { ApiUser, ApiWorkspace, ApiDocument, ApiConversation, ApiMessage, TokenResponse, LLMConfig, OllamaModel, AdminUser, WorkspaceMember, BulkFileResult, RetrievalConfig } from "./types";
+import type { ApiUser, ApiWorkspace, ApiDocument, ApiConversation, ApiMessage, TokenResponse, LLMConfig, OllamaModel, AdminUser, WorkspaceMember, BulkFileResult, RetrievalConfig, TagImportResult } from "./types";
 
 // Empty string = relative URLs → Next.js rewrites proxy to the backend.
 // Override NEXT_PUBLIC_API_URL for local dev if running frontend separately (e.g. http://localhost:8000).
@@ -81,6 +81,12 @@ export const api = {
   documents: {
     list: (workspaceId: string) =>
       request<ApiDocument[]>(`/api/workspaces/${workspaceId}/documents`),
+
+    setTags: (documentId: string, tags: string[]) =>
+      request<ApiDocument>(`/api/documents/${documentId}/tags`, {
+        method: "PATCH",
+        body: JSON.stringify({ tags }),
+      }),
 
     upload: (workspaceId: string, file: File) => {
       const form = new FormData();
@@ -244,6 +250,15 @@ export const api = {
       const form = new FormData();
       form.append("file", file);
       return request<BulkFileResult[]>(`/api/admin/workspaces/${workspaceId}/bulk-upload-zip`, {
+        method: "POST",
+        body: form,
+      });
+    },
+
+    bulkImportTags: (workspaceId: string, file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return request<TagImportResult[]>(`/api/admin/workspaces/${workspaceId}/documents/tags/bulk`, {
         method: "POST",
         body: form,
       });

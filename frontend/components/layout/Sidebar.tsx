@@ -91,7 +91,7 @@ export default function Sidebar() {
           Workspace
         </p>
         <button
-          onClick={() => setShowWorkspaceMenu((v) => !v)}
+          onClick={() => { setViewMode("library"); setShowWorkspaceMenu((v) => !v); }}
           style={{
             width: "100%",
             display: "flex",
@@ -152,34 +152,8 @@ export default function Sidebar() {
 
       <div style={{ height: "1px", background: "var(--airbnb-hairline)", margin: "0 12px" }} />
 
-      {/* Chat / Library mode toggle */}
-      <div style={{ padding: "10px 12px 8px", display: "flex", gap: "4px" }}>
-        {(["chat", "library"] as const).map((mode) => (
-          <button
-            key={mode}
-            onClick={() => setViewMode(mode)}
-            style={{
-              flex: 1,
-              height: "30px",
-              fontSize: "12px",
-              fontWeight: 600,
-              fontFamily: "inherit",
-              cursor: "pointer",
-              borderRadius: "6px",
-              border: "none",
-              transition: "background 0.12s ease, color 0.12s ease",
-              background: viewMode === mode ? "var(--airbnb-ink)" : "transparent",
-              color: viewMode === mode ? "white" : "var(--airbnb-muted)",
-              textTransform: "capitalize",
-            }}
-          >
-            {mode === "chat" ? "Chat" : "Library"}
-          </button>
-        ))}
-      </div>
-
-      {/* New conversation button — only visible in chat mode */}
-      <div style={{ padding: "4px 12px 10px", display: viewMode === "library" ? "none" : "block" }}>
+      {/* New conversation button */}
+      <div style={{ padding: "10px 12px 8px" }}>
         <button
           onClick={handleNewConversation}
           style={{
@@ -210,14 +184,14 @@ export default function Sidebar() {
         </button>
       </div>
 
-      <div style={{ padding: "0 16px 6px", display: viewMode === "library" ? "none" : "block" }}>
+      <div style={{ padding: "0 16px 6px" }}>
         <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--airbnb-muted)", textTransform: "uppercase", letterSpacing: "0.6px" }}>
           Conversations
         </span>
       </div>
 
       {/* Conversations list */}
-      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "0 8px", display: viewMode === "library" ? "none" : undefined }}>
+      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "0 8px" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
           {conversations.length === 0 && (
             <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", textAlign: "center", marginTop: "24px", padding: "0 12px" }}>

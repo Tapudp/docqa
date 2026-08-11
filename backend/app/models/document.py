@@ -5,6 +5,7 @@ from typing import Optional
 from sqlalchemy import ARRAY, ForeignKey, Integer, String, Text, TIMESTAMP, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.schema import Index
 
 from app.database import Base
 
@@ -29,5 +30,13 @@ class Document(Base):
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Tags — TEXT[] with a GIN index for fast array containment/overlap queries.
+    # Use @> (contains) or && (overlaps) operators to exploit the index.
+    tags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default="{}")
+
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("ix_documents_tags_gin", "tags", postgresql_using="gin"),
+    )
