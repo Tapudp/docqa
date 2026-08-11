@@ -34,6 +34,19 @@ export default function BulkUploadModal() {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+
+  function handleTagKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      const val = tagInput.trim().toLowerCase().replace(/,/g, "");
+      if (val && !tags.includes(val)) setTags((prev) => [...prev, val]);
+      setTagInput("");
+    } else if (e.key === "Backspace" && !tagInput && tags.length > 0) {
+      setTags((prev) => prev.slice(0, -1));
+    }
+  }
 
   useEffect(() => {
     api.admin.listAllWorkspaces().then((ws) => {
@@ -107,10 +120,21 @@ export default function BulkUploadModal() {
       try {
         if (isZip) {
           const results = await api.admin.uploadZip(wsId, sf.file);
+          // Apply tags to every successfully queued file in the zip
+          if (tags.length > 0) {
+            for (const r of results) {
+              if (r.status === "queued" && r.document_id) {
+                try { await api.documents.setTags(r.document_id, tags); } catch { /* non-fatal */ }
+              }
+            }
+          }
           setStaged((prev) => prev.map((s) => s.id === sf.id
             ? { ...s, status: "done", zipResults: results } : s));
         } else {
-          await api.admin.uploadDocument(wsId, sf.file);
+          const doc = await api.admin.uploadDocument(wsId, sf.file);
+          if (tags.length > 0) {
+            try { await api.documents.setTags(doc.id, tags); } catch { /* non-fatal */ }
+          }
           setStaged((prev) => prev.map((s) => s.id === sf.id ? { ...s, status: "done" } : s));
         }
       } catch (err) {
@@ -214,6 +238,46 @@ export default function BulkUploadModal() {
               <input type="file" multiple accept={ACCEPTED.join(",")} onChange={handleFileInput} style={{ display: "none" }} />
             </label>
           </div>
+        </div>
+
+        {/* Tag input */}
+        <div style={{ padding: "14px 24px 0", flexShrink: 0 }}>
+          <label style={{ fontSize: "11px", fontWeight: 700, color: "var(--airbnb-muted)", textTransform: "uppercase", letterSpacing: "0.6px", display: "block", marginBottom: "6px" }}>
+            Do you want to add tags to these files? <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span>
+          </label>
+          <div
+            style={{
+              display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px",
+              minHeight: "40px", padding: "6px 10px",
+              border: "1px solid var(--airbnb-hairline)", borderRadius: "var(--radius-sm)",
+              background: "var(--airbnb-canvas)", cursor: "text",
+            }}
+            onClick={() => (document.getElementById("bulk-tag-input") as HTMLInputElement)?.focus()}
+          >
+            {tags.map((tag) => (
+              <span key={tag} style={{ display: "flex", alignItems: "center", gap: "4px", padding: "2px 8px", borderRadius: "999px", background: "var(--airbnb-surface-soft)", border: "1px solid var(--airbnb-hairline)", fontSize: "12px", fontWeight: 500, color: "var(--airbnb-ink)" }}>
+                {tag}
+                <button onClick={() => setTags((p) => p.filter((t) => t !== tag))} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 1, color: "var(--airbnb-muted)", fontSize: "13px" }}>×</button>
+              </span>
+            ))}
+            <input
+              id="bulk-tag-input"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={handleTagKeyDown}
+              onBlur={() => {
+                const val = tagInput.trim().toLowerCase().replace(/,/g, "");
+                if (val && !tags.includes(val)) setTags((p) => [...p, val]);
+                setTagInput("");
+              }}
+              placeholder={tags.length === 0 ? "Type a tag and press Enter or comma…" : ""}
+              disabled={uploading}
+              style={{ flex: 1, minWidth: "160px", border: "none", outline: "none", fontSize: "13px", color: "var(--airbnb-ink)", background: "transparent", fontFamily: "inherit", padding: "2px 0" }}
+            />
+          </div>
+          <p style={{ margin: "5px 0 0", fontSize: "11px", color: "var(--airbnb-muted)" }}>
+            Tags apply to all files in this upload. Press Enter or comma to add each tag.
+          </p>
         </div>
 
         {/* File list */}

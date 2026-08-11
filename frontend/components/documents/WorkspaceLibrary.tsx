@@ -186,9 +186,21 @@ function TagImportModal({ workspaceId, onClose, onDone }: {
         <h2 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 700, color: "var(--airbnb-ink)" }}>
           Import tags from Excel
         </h2>
-        <p style={{ margin: "0 0 20px", fontSize: "13px", color: "var(--airbnb-muted)", lineHeight: 1.55 }}>
+        <p style={{ margin: "0 0 12px", fontSize: "13px", color: "var(--airbnb-muted)", lineHeight: 1.55 }}>
           Upload an <strong>.xlsx</strong> file. Row 1 is a header (skipped). Column A is the filename; columns B onwards are tags — one tag per cell. Existing tags are replaced.
         </p>
+
+        {/* Warning note */}
+        <div style={{ display: "flex", gap: "10px", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: "8px", padding: "12px 14px", marginBottom: "16px" }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginTop: "1px" }}>
+            <path d="M8 1.5L1 14h14L8 1.5z" stroke="#d97706" strokeWidth="1.4" strokeLinejoin="round" fill="none" />
+            <path d="M8 6v4" stroke="#d97706" strokeWidth="1.5" strokeLinecap="round" />
+            <circle cx="8" cy="11.5" r="0.75" fill="#d97706" />
+          </svg>
+          <p style={{ margin: 0, fontSize: "12px", color: "#92400e", lineHeight: 1.6 }}>
+            The filename in column A must <strong>exactly match</strong> a file already uploaded to this workspace (case-insensitive). If the filename doesn&apos;t exist in the system, that row is skipped and no tags are applied. Typing a random or incorrect filename will have no effect.
+          </p>
+        </div>
 
         <div style={{ background: "var(--airbnb-surface-soft)", border: "1px dashed var(--airbnb-hairline)", borderRadius: "10px", padding: "16px 20px", marginBottom: "16px" }}>
           <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 600, color: "var(--airbnb-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
