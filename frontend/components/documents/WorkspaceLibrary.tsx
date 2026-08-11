@@ -430,12 +430,12 @@ export default function WorkspaceLibrary() {
 
   // Top 10 tags by number of documents that carry them
   const topTags = useMemo(() => {
-    const counts = new Map<string, number>();
-    apiDocuments.forEach((d) => d.tags.forEach((t) => counts.set(t, (counts.get(t) ?? 0) + 1)));
-    return [...counts.entries()]
+    const counts: Record<string, number> = {};
+    apiDocuments.forEach((d) => d.tags.forEach((t) => { counts[t] = (counts[t] ?? 0) + 1; }));
+    return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
-      .map(([tag]) => tag);
+      .map((entry) => entry[0]);
   }, [apiDocuments]);
 
   function toggleTag(tag: string) {
