@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useStore } from "@/lib/store";
 import { api } from "@/lib/api";
 import type { ApiDocument, TagImportResult } from "@/lib/types";
@@ -90,56 +90,194 @@ function TagChip({ tag }: { tag: string }) {
   );
 }
 
+function AddTagPopover({ doc, onClose }: { doc: ApiDocument; onClose: () => void }) {
+  const { updateApiDocument } = useStore();
+  const [tags, setTags] = useState<string[]>([]);
+  const [input, setInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  function commitInput() {
+    const val = input.trim().toLowerCase().replace(/,/g, "");
+    if (val && !tags.includes(val)) setTags((p) => [...p, val]);
+    setInput("");
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commitInput(); }
+    else if (e.key === "Backspace" && !input && tags.length > 0) setTags((p) => p.slice(0, -1));
+    else if (e.key === "Escape") onClose();
+  }
+
+  async function handleSave() {
+    commitInput();
+    const finalTags = [...tags];
+    const pendingVal = input.trim().toLowerCase().replace(/,/g, "");
+    if (pendingVal && !finalTags.includes(pendingVal)) finalTags.push(pendingVal);
+    if (finalTags.length === 0) { onClose(); return; }
+    setSaving(true);
+    try {
+      const updated = await api.documents.setTags(doc.id, finalTags);
+      updateApiDocument(updated);
+      onClose();
+    } catch { /* silent */ } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      ref={ref}
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        position: "absolute",
+        top: "calc(100% + 4px)",
+        left: "52px",
+        zIndex: 50,
+        background: "var(--airbnb-canvas)",
+        border: "1px solid var(--airbnb-hairline)",
+        borderRadius: "10px",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+        padding: "14px",
+        width: "300px",
+      }}
+    >
+      <p style={{ margin: "0 0 8px", fontSize: "12px", fontWeight: 600, color: "var(--airbnb-ink)" }}>
+        Add tags
+      </p>
+
+      {/* Chip input */}
+      <div
+        style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "5px", minHeight: "36px", padding: "5px 8px", border: "1px solid var(--airbnb-hairline)", borderRadius: "7px", background: "var(--airbnb-surface-soft)", cursor: "text" }}
+        onClick={() => (document.getElementById(`tag-input-${doc.id}`) as HTMLInputElement)?.focus()}
+      >
+        {tags.map((tag) => (
+          <span key={tag} style={{ display: "flex", alignItems: "center", gap: "3px", padding: "1px 7px", borderRadius: "999px", background: "var(--airbnb-canvas)", border: "1px solid var(--airbnb-hairline)", fontSize: "11px", fontWeight: 500, color: "var(--airbnb-ink)" }}>
+            {tag}
+            <button onClick={() => setTags((p) => p.filter((t) => t !== tag))} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 1, color: "var(--airbnb-muted)", fontSize: "12px" }}>×</button>
+          </span>
+        ))}
+        <input
+          id={`tag-input-${doc.id}`}
+          autoFocus
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={commitInput}
+          placeholder={tags.length === 0 ? "Type a tag…" : ""}
+          style={{ flex: 1, minWidth: "80px", border: "none", outline: "none", fontSize: "12px", color: "var(--airbnb-ink)", background: "transparent", fontFamily: "inherit", padding: "1px 0" }}
+        />
+      </div>
+      <p style={{ margin: "5px 0 10px", fontSize: "11px", color: "var(--airbnb-muted)" }}>
+        Press Enter or comma after each tag.
+      </p>
+
+      <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+        <button
+          onClick={onClose}
+          style={{ height: "30px", padding: "0 12px", background: "transparent", border: "1px solid var(--airbnb-hairline)", borderRadius: "6px", fontSize: "12px", color: "var(--airbnb-body)", cursor: "pointer", fontFamily: "inherit" }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={saving || (tags.length === 0 && !input.trim())}
+          style={{ height: "30px", padding: "0 14px", background: "var(--airbnb-rausch)", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 600, color: "white", cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: saving ? 0.7 : 1 }}
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function FileRow({ doc, isSelected, onClick }: {
   doc: ApiDocument;
   isSelected: boolean;
   onClick: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
 
   return (
     <div
-      onClick={onClick}
+      style={{ position: "relative" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: "14px",
-        padding: "12px 16px",
-        borderRadius: "10px",
-        cursor: "pointer",
-        background: isSelected ? "var(--airbnb-surface-soft)" : hovered ? "var(--airbnb-surface-soft)" : "transparent",
-        border: isSelected ? "1px solid var(--airbnb-hairline)" : "1px solid transparent",
-        transition: "background 0.1s ease, border-color 0.1s ease",
-      }}
     >
-      <div style={{ paddingTop: "2px" }}>
-        <FileTypeIcon mime={doc.mime_type} />
-      </div>
+      <div
+        onClick={onClick}
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: "14px",
+          padding: "12px 16px",
+          borderRadius: "10px",
+          cursor: "pointer",
+          background: isSelected ? "var(--airbnb-surface-soft)" : hovered ? "var(--airbnb-surface-soft)" : "transparent",
+          border: isSelected ? "1px solid var(--airbnb-hairline)" : "1px solid transparent",
+          transition: "background 0.1s ease, border-color 0.1s ease",
+        }}
+      >
+        <div style={{ paddingTop: "2px" }}>
+          <FileTypeIcon mime={doc.mime_type} />
+        </div>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ margin: 0, fontSize: "13px", fontWeight: 500, color: "var(--airbnb-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {doc.filename}
-        </p>
-        <p style={{ margin: "2px 0 0", fontSize: "11px", color: "var(--airbnb-muted)" }}>
-          {formatSize(doc.file_size)} · {formatDate(doc.created_at)}
-        </p>
-        {doc.tags.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "6px" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: "13px", fontWeight: 500, color: "var(--airbnb-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {doc.filename}
+          </p>
+          <p style={{ margin: "2px 0 0", fontSize: "11px", color: "var(--airbnb-muted)" }}>
+            {formatSize(doc.file_size)} · {formatDate(doc.created_at)}
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "6px", alignItems: "center" }}>
             {doc.tags.map((tag) => <TagChip key={tag} tag={tag} />)}
+            {doc.tags.length === 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setTagPopoverOpen(true); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: "4px",
+                  padding: "2px 9px", borderRadius: "999px",
+                  border: "1px dashed var(--airbnb-hairline)",
+                  background: "transparent", cursor: "pointer",
+                  fontSize: "11px", fontWeight: 500, color: "var(--airbnb-muted)",
+                  fontFamily: "inherit",
+                  transition: "border-color 0.1s ease, color 0.1s ease",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--airbnb-ink)"; e.currentTarget.style.color = "var(--airbnb-ink)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--airbnb-hairline)"; e.currentTarget.style.color = "var(--airbnb-muted)"; }}
+              >
+                <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                  <path d="M4.5 1v7M1 4.5h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                </svg>
+                Add tag
+              </button>
+            )}
           </div>
-        )}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", paddingTop: "2px", flexShrink: 0 }}>
+          <StatusBadge status={doc.status} />
+          {isSelected && (
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M5 3l5 4-5 4" stroke="var(--airbnb-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", paddingTop: "2px", flexShrink: 0 }}>
-        <StatusBadge status={doc.status} />
-        {isSelected && (
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M5 3l5 4-5 4" stroke="var(--airbnb-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
-      </div>
+      {tagPopoverOpen && (
+        <AddTagPopover doc={doc} onClose={() => setTagPopoverOpen(false)} />
+      )}
     </div>
   );
 }
