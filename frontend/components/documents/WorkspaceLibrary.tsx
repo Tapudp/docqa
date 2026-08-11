@@ -422,21 +422,38 @@ function TagImportModal({ workspaceId, onClose, onDone }: {
 export default function WorkspaceLibrary() {
   const { apiDocuments, apiWorkspaces, activeWorkspaceId, openPdf, pdfDocId, currentUser, updateApiDocument } = useStore();
   const [query, setQuery] = useState("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagImportOpen, setTagImportOpen] = useState(false);
 
   const activeWorkspace = apiWorkspaces.find((w) => w.id === activeWorkspaceId);
   const isAdmin = currentUser?.role === "admin";
 
+  // Top 10 tags by number of documents that carry them
+  const topTags = useMemo(() => {
+    const counts = new Map<string, number>();
+    apiDocuments.forEach((d) => d.tags.forEach((t) => counts.set(t, (counts.get(t) ?? 0) + 1)));
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([tag]) => tag);
+  }, [apiDocuments]);
+
+  function toggleTag(tag: string) {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  }
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return apiDocuments.slice(0, MAX_VISIBLE);
     return apiDocuments
-      .filter((d) =>
-        d.filename.toLowerCase().includes(q) ||
-        d.tags.some((t) => t.includes(q))
-      )
+      .filter((d) => {
+        const matchesQuery = !q || d.filename.toLowerCase().includes(q) || d.tags.some((t) => t.includes(q));
+        const matchesTags = selectedTags.length === 0 || selectedTags.some((t) => d.tags.includes(t));
+        return matchesQuery && matchesTags;
+      })
       .slice(0, MAX_VISIBLE);
-  }, [apiDocuments, query]);
+  }, [apiDocuments, query, selectedTags]);
 
   const totalCount = apiDocuments.length;
   const indexedCount = apiDocuments.filter((d) => d.status === "ready").length;
@@ -516,9 +533,64 @@ export default function WorkspaceLibrary() {
           )}
         </div>
 
-        <p style={{ margin: "12px 0 0", fontSize: "12px", color: "var(--airbnb-muted)" }}>
-          {query
-            ? `${filtered.length} result${filtered.length !== 1 ? "s" : ""} for "${query}"`
+        {/* Tag filter strip — top 10 tags by frequency */}
+        {topTags.length > 0 && (
+          <div style={{ marginTop: "12px", maxWidth: "560px" }}>
+            <div
+              style={{
+                display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "2px",
+                scrollbarWidth: "none",
+              }}
+            >
+              <style>{`.tag-strip::-webkit-scrollbar { display: none; }`}</style>
+              {topTags.map((tag) => {
+                const active = selectedTags.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => toggleTag(tag)}
+                    style={{
+                      flexShrink: 0, height: "28px", padding: "0 12px",
+                      borderRadius: "999px", border: "1px solid",
+                      borderColor: active ? "var(--airbnb-ink)" : "var(--airbnb-hairline)",
+                      background: active ? "var(--airbnb-ink)" : "transparent",
+                      color: active ? "white" : "var(--airbnb-body)",
+                      fontSize: "12px", fontWeight: active ? 600 : 400,
+                      cursor: "pointer", fontFamily: "inherit",
+                      transition: "background 0.1s ease, border-color 0.1s ease, color 0.1s ease",
+                    }}
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
+              {selectedTags.length > 0 && (
+                <button
+                  onClick={() => setSelectedTags([])}
+                  style={{
+                    flexShrink: 0, height: "28px", padding: "0 10px",
+                    borderRadius: "999px", border: "1px solid #fca5a5",
+                    background: "transparent", color: "#dc2626",
+                    fontSize: "12px", fontWeight: 500, cursor: "pointer",
+                    fontFamily: "inherit", display: "flex", alignItems: "center", gap: "4px",
+                    transition: "background 0.1s ease",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "#fee2e2"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                    <path d="M1 1l7 7M8 1L1 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                  </svg>
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        <p style={{ margin: "10px 0 0", fontSize: "12px", color: "var(--airbnb-muted)" }}>
+          {(query || selectedTags.length > 0)
+            ? `${filtered.length} result${filtered.length !== 1 ? "s" : ""}${selectedTags.length > 0 ? ` tagged ${selectedTags.map((t) => `"${t}"`).join(" or ")}` : ""}${query ? ` matching "${query}"` : ""}`
             : `${totalCount} file${totalCount !== 1 ? "s" : ""} · ${indexedCount} indexed`}
         </p>
       </div>
@@ -532,7 +604,7 @@ export default function WorkspaceLibrary() {
               <path d="M23 23l6 6" stroke="var(--airbnb-hairline)" strokeWidth="2" strokeLinecap="round" />
             </svg>
             <p style={{ margin: 0, fontSize: "14px", fontWeight: 500 }}>
-              {query ? `No files matching "${query}"` : "No files uploaded yet"}
+              {query || selectedTags.length > 0 ? "No files match your search or filters" : "No files uploaded yet"}
             </p>
           </div>
         ) : (
