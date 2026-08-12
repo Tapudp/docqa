@@ -18,7 +18,9 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function FileTypeIcon({ mime }: { mime: string }) {
+// ── File type icon ────────────────────────────────────────────
+
+function FileTypeIcon({ mime, size = 38 }: { mime: string; size?: number }) {
   const isPdf = mime === "application/pdf";
   const isWord = mime.includes("wordprocessingml");
   const isExcel = mime.includes("spreadsheetml");
@@ -50,11 +52,13 @@ function FileTypeIcon({ mime }: { mime: string }) {
     : "#6b7280";
 
   return (
-    <div style={{ width: "38px", height: "38px", borderRadius: "8px", background: bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-      <span style={{ fontSize: "10px", fontWeight: 700, color, letterSpacing: "0.02em" }}>{label}</span>
+    <div style={{ width: `${size}px`, height: `${size}px`, borderRadius: "8px", background: bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <span style={{ fontSize: size > 40 ? "12px" : "10px", fontWeight: 700, color, letterSpacing: "0.02em" }}>{label}</span>
     </div>
   );
 }
+
+// ── Status badge ──────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
   const config: Record<string, { label: string; bg: string; color: string }> = {
@@ -73,6 +77,8 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── Tag chip — purple/violet ───────────────────────────────────
+
 function TagChip({ tag }: { tag: string }) {
   return (
     <span style={{
@@ -80,9 +86,9 @@ function TagChip({ tag }: { tag: string }) {
       fontWeight: 500,
       padding: "2px 7px",
       borderRadius: "999px",
-      background: "var(--airbnb-surface-soft)",
-      border: "1px solid var(--airbnb-hairline)",
-      color: "var(--airbnb-body)",
+      background: "#ede9fe",
+      border: "1px solid #c4b5fd",
+      color: "#6d28d9",
       whiteSpace: "nowrap",
     }}>
       {tag}
@@ -90,14 +96,23 @@ function TagChip({ tag }: { tag: string }) {
   );
 }
 
+// ── Add tag popover ───────────────────────────────────────────
+
 function AddTagPopover({ doc, onClose }: { doc: ApiDocument; onClose: () => void }) {
-  const { updateApiDocument } = useStore();
+  const { updateApiDocument, apiDocuments } = useStore();
   const [tags, setTags] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [saving, setSaving] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Close on outside click
+  // All unique tags across the workspace, excluding ones on this doc and already selected
+  const suggestions = useMemo(() => {
+    const seen = new Set<string>();
+    apiDocuments.forEach((d) => d.tags.forEach((t) => seen.add(t)));
+    doc.tags.forEach((t) => seen.delete(t));
+    return Array.from(seen).filter((t) => !tags.includes(t)).slice(0, 15);
+  }, [apiDocuments, doc.tags, tags]);
+
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
@@ -106,27 +121,27 @@ function AddTagPopover({ doc, onClose }: { doc: ApiDocument; onClose: () => void
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
-  function commitInput() {
-    const val = input.trim().toLowerCase().replace(/,/g, "");
-    if (val && !tags.includes(val)) setTags((p) => [...p, val]);
-    setInput("");
-  }
-
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commitInput(); }
-    else if (e.key === "Backspace" && !input && tags.length > 0) setTags((p) => p.slice(0, -1));
-    else if (e.key === "Escape") onClose();
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      const val = input.trim().toLowerCase().replace(/,/g, "");
+      if (val && !tags.includes(val)) setTags((p) => [...p, val]);
+      setInput("");
+    } else if (e.key === "Backspace" && !input && tags.length > 0) {
+      setTags((p) => p.slice(0, -1));
+    } else if (e.key === "Escape") {
+      onClose();
+    }
   }
 
   async function handleSave() {
-    commitInput();
-    const finalTags = [...tags];
     const pendingVal = input.trim().toLowerCase().replace(/,/g, "");
-    if (pendingVal && !finalTags.includes(pendingVal)) finalTags.push(pendingVal);
-    if (finalTags.length === 0) { onClose(); return; }
+    const newTags = Array.from(new Set(tags.concat(pendingVal ? [pendingVal] : [])));
+    if (newTags.length === 0) { onClose(); return; }
+    const combined = Array.from(new Set(doc.tags.concat(newTags)));
     setSaving(true);
     try {
-      const updated = await api.documents.setTags(doc.id, finalTags);
+      const updated = await api.documents.setTags(doc.id, combined);
       updateApiDocument(updated);
       onClose();
     } catch { /* silent */ } finally {
@@ -157,13 +172,13 @@ function AddTagPopover({ doc, onClose }: { doc: ApiDocument; onClose: () => void
 
       {/* Chip input */}
       <div
-        style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "5px", minHeight: "36px", padding: "5px 8px", border: "1px solid var(--airbnb-hairline)", borderRadius: "7px", background: "var(--airbnb-surface-soft)", cursor: "text" }}
+        style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "5px", minHeight: "36px", padding: "5px 8px", border: "1px solid #c4b5fd", borderRadius: "7px", background: "#faf5ff", cursor: "text" }}
         onClick={() => (document.getElementById(`tag-input-${doc.id}`) as HTMLInputElement)?.focus()}
       >
         {tags.map((tag) => (
-          <span key={tag} style={{ display: "flex", alignItems: "center", gap: "3px", padding: "1px 7px", borderRadius: "999px", background: "var(--airbnb-canvas)", border: "1px solid var(--airbnb-hairline)", fontSize: "11px", fontWeight: 500, color: "var(--airbnb-ink)" }}>
+          <span key={tag} style={{ display: "flex", alignItems: "center", gap: "3px", padding: "1px 7px", borderRadius: "999px", background: "#ede9fe", border: "1px solid #c4b5fd", fontSize: "11px", fontWeight: 500, color: "#6d28d9" }}>
             {tag}
-            <button onClick={() => setTags((p) => p.filter((t) => t !== tag))} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 1, color: "var(--airbnb-muted)", fontSize: "12px" }}>×</button>
+            <button onClick={() => setTags((p) => p.filter((t) => t !== tag))} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, lineHeight: 1, color: "#9d75e8", fontSize: "12px" }}>×</button>
           </span>
         ))}
         <input
@@ -172,12 +187,45 @@ function AddTagPopover({ doc, onClose }: { doc: ApiDocument; onClose: () => void
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          onBlur={commitInput}
+          onBlur={() => {
+            const val = input.trim().toLowerCase().replace(/,/g, "");
+            if (val && !tags.includes(val)) setTags((p) => [...p, val]);
+            setInput("");
+          }}
           placeholder={tags.length === 0 ? "Type a tag…" : ""}
           style={{ flex: 1, minWidth: "80px", border: "none", outline: "none", fontSize: "12px", color: "var(--airbnb-ink)", background: "transparent", fontFamily: "inherit", padding: "1px 0" }}
         />
       </div>
-      <p style={{ margin: "5px 0 10px", fontSize: "11px", color: "var(--airbnb-muted)" }}>
+
+      {/* Existing workspace tag suggestions */}
+      {suggestions.length > 0 && (
+        <div style={{ marginTop: "8px" }}>
+          <p style={{ margin: "0 0 5px", fontSize: "10px", fontWeight: 600, color: "var(--airbnb-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Existing tags in workspace
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+            {suggestions.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTags((p) => p.includes(t) ? p : [...p, t])}
+                style={{
+                  padding: "2px 8px", borderRadius: "999px",
+                  background: "transparent", border: "1px solid #c4b5fd",
+                  fontSize: "11px", fontWeight: 500, color: "#7c3aed",
+                  cursor: "pointer", fontFamily: "inherit",
+                  transition: "background 0.1s ease",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "#ede9fe"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              >
+                + {t}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p style={{ margin: "8px 0 10px", fontSize: "11px", color: "var(--airbnb-muted)" }}>
         Press Enter or comma after each tag.
       </p>
 
@@ -191,7 +239,7 @@ function AddTagPopover({ doc, onClose }: { doc: ApiDocument; onClose: () => void
         <button
           onClick={handleSave}
           disabled={saving || (tags.length === 0 && !input.trim())}
-          style={{ height: "30px", padding: "0 14px", background: "var(--airbnb-rausch)", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 600, color: "white", cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: saving ? 0.7 : 1 }}
+          style={{ height: "30px", padding: "0 14px", background: "#7c3aed", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 600, color: "white", cursor: saving || (tags.length === 0 && !input.trim()) ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: saving || (tags.length === 0 && !input.trim()) ? 0.6 : 1 }}
         >
           {saving ? "Saving…" : "Save"}
         </button>
@@ -200,19 +248,176 @@ function AddTagPopover({ doc, onClose }: { doc: ApiDocument; onClose: () => void
   );
 }
 
-function FileRow({ doc, isSelected, onClick }: {
+// ── File view modal ───────────────────────────────────────────
+
+function FileViewModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  const isPdf = doc.mime_type === "application/pdf";
+  const isImage = doc.mime_type.startsWith("image/");
+
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("docqa_token") : null;
+    let url: string | null = null;
+
+    fetch(`/api/documents/${doc.id}/file`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed");
+        return r.blob();
+      })
+      .then((blob) => {
+        url = URL.createObjectURL(blob);
+        setBlobUrl(url);
+        setLoading(false);
+      })
+      .catch(() => { setError(true); setLoading(false); });
+
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [doc.id]);
+
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  function handleDownload() {
+    if (!blobUrl) return;
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = doc.filename;
+    a.click();
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", flexDirection: "column", background: "rgba(0,0,0,0.92)" }}>
+      {/* Header bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 20px", background: "rgba(0,0,0,0.55)", flexShrink: 0 }}>
+        <FileTypeIcon mime={doc.mime_type} size={36} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "white", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {doc.filename}
+          </p>
+          <p style={{ margin: "2px 0 0", fontSize: "12px", color: "rgba(255,255,255,0.55)" }}>
+            {formatSize(doc.file_size)} · {formatDate(doc.created_at)}
+            {doc.tags.length > 0 && ` · ${doc.tags.join(", ")}`}
+          </p>
+        </div>
+        {blobUrl && (
+          <button
+            onClick={handleDownload}
+            style={{ height: "34px", padding: "0 14px", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "7px", fontSize: "13px", color: "white", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: "6px", flexShrink: 0, transition: "background 0.1s ease" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.2)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; }}
+          >
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+              <path d="M6.5 1v8M3.5 6.5l3 3 3-3M1 11h11" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Download
+          </button>
+        )}
+        <button
+          onClick={onClose}
+          style={{ width: "34px", height: "34px", borderRadius: "8px", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "background 0.1s ease" }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.22)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; }}
+        >
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <path d="M1 1l11 11M12 1L1 12" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Content — click backdrop to close */}
+      <div
+        style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}
+        onClick={onClose}
+      >
+        {loading && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", color: "rgba(255,255,255,0.6)" }}>
+            <div style={{ width: "32px", height: "32px", border: "3px solid rgba(255,255,255,0.15)", borderTopColor: "white", borderRadius: "50%", animation: "modal-spin 0.8s linear infinite" }} />
+            <p style={{ margin: 0, fontSize: "14px" }}>Loading file…</p>
+          </div>
+        )}
+
+        {!loading && error && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: "var(--airbnb-canvas)", borderRadius: "14px", padding: "40px 48px", textAlign: "center" }}
+          >
+            <p style={{ margin: "0 0 8px", fontSize: "16px", fontWeight: 600, color: "var(--airbnb-ink)" }}>Could not load file</p>
+            <p style={{ margin: 0, fontSize: "13px", color: "var(--airbnb-muted)" }}>The file may still be processing or an error occurred.</p>
+          </div>
+        )}
+
+        {!loading && !error && blobUrl && isPdf && (
+          <iframe
+            src={blobUrl}
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+          />
+        )}
+
+        {!loading && !error && blobUrl && isImage && (
+          <img
+            src={blobUrl}
+            alt={doc.filename}
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "calc(100% - 48px)", maxHeight: "calc(100% - 24px)", objectFit: "contain", borderRadius: "8px", boxShadow: "0 8px 40px rgba(0,0,0,0.5)" }}
+          />
+        )}
+
+        {!loading && !error && !isPdf && !isImage && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: "var(--airbnb-canvas)", borderRadius: "14px", padding: "40px 48px", textAlign: "center", boxShadow: "0 8px 40px rgba(0,0,0,0.4)", maxWidth: "380px" }}
+          >
+            <FileTypeIcon mime={doc.mime_type} size={52} />
+            <p style={{ margin: "16px 0 4px", fontSize: "16px", fontWeight: 600, color: "var(--airbnb-ink)" }}>{doc.filename}</p>
+            <p style={{ margin: "0 0 20px", fontSize: "13px", color: "var(--airbnb-muted)" }}>
+              {formatSize(doc.file_size)} · In-browser preview not available
+            </p>
+            {blobUrl && (
+              <button
+                onClick={handleDownload}
+                style={{ height: "38px", padding: "0 20px", background: "#7c3aed", border: "none", borderRadius: "8px", fontSize: "13px", fontWeight: 600, color: "white", cursor: "pointer", fontFamily: "inherit" }}
+              >
+                Download file
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <style>{`@keyframes modal-spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+// ── File row ──────────────────────────────────────────────────
+
+function FileRow({ doc, isSelected, onClick, onDelete }: {
   doc: ApiDocument;
   isSelected: boolean;
   onClick: () => void;
+  onDelete: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   return (
     <div
       style={{ position: "relative" }}
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseLeave={() => { setHovered(false); if (!deleting) setConfirmDelete(false); }}
     >
       <div
         onClick={onClick}
@@ -223,8 +428,8 @@ function FileRow({ doc, isSelected, onClick }: {
           padding: "12px 16px",
           borderRadius: "10px",
           cursor: "pointer",
-          background: isSelected ? "var(--airbnb-surface-soft)" : hovered ? "var(--airbnb-surface-soft)" : "transparent",
-          border: isSelected ? "1px solid var(--airbnb-hairline)" : "1px solid transparent",
+          background: isSelected ? "#f5f3ff" : hovered ? "var(--airbnb-surface-soft)" : "transparent",
+          border: isSelected ? "1px solid #c4b5fd" : "1px solid transparent",
           transition: "background 0.1s ease, border-color 0.1s ease",
         }}
       >
@@ -247,14 +452,14 @@ function FileRow({ doc, isSelected, onClick }: {
                 style={{
                   display: "flex", alignItems: "center", gap: "4px",
                   padding: "2px 9px", borderRadius: "999px",
-                  border: "1px dashed var(--airbnb-hairline)",
+                  border: "1px dashed #c4b5fd",
                   background: "transparent", cursor: "pointer",
-                  fontSize: "11px", fontWeight: 500, color: "var(--airbnb-muted)",
+                  fontSize: "11px", fontWeight: 500, color: "#9d75e8",
                   fontFamily: "inherit",
                   transition: "border-color 0.1s ease, color 0.1s ease",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--airbnb-ink)"; e.currentTarget.style.color = "var(--airbnb-ink)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--airbnb-hairline)"; e.currentTarget.style.color = "var(--airbnb-muted)"; }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#7c3aed"; e.currentTarget.style.color = "#7c3aed"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#c4b5fd"; e.currentTarget.style.color = "#9d75e8"; }}
               >
                 <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
                   <path d="M4.5 1v7M1 4.5h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
@@ -265,12 +470,42 @@ function FileRow({ doc, isSelected, onClick }: {
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", paddingTop: "2px", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", paddingTop: "2px", flexShrink: 0 }}>
           <StatusBadge status={doc.status} />
-          {isSelected && (
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M5 3l5 4-5 4" stroke="var(--airbnb-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+
+          {/* Delete action */}
+          {hovered && !confirmDelete && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+              title="Delete file"
+              style={{ width: "28px", height: "28px", borderRadius: "6px", background: "transparent", border: "1px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "background 0.1s ease, border-color 0.1s ease" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "#fee2e2"; e.currentTarget.style.borderColor = "#fca5a5"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; }}
+            >
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                <path d="M2 3.5h9M4.5 3.5V2.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5v1" stroke="#ef4444" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M2.5 3.5l.5 7a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1l.5-7" stroke="#ef4444" strokeWidth="1.3" strokeLinecap="round" />
+                <path d="M5 6v3.5M8 6v3.5" stroke="#ef4444" strokeWidth="1.3" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
+          {confirmDelete && (
+            <div style={{ display: "flex", alignItems: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
+              <span style={{ fontSize: "11px", color: "#dc2626", fontWeight: 600 }}>Delete?</span>
+              <button
+                onClick={async (e) => { e.stopPropagation(); setDeleting(true); await onDelete(); }}
+                disabled={deleting}
+                style={{ height: "22px", padding: "0 8px", background: "#dc2626", border: "none", borderRadius: "4px", fontSize: "11px", fontWeight: 600, color: "white", cursor: deleting ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: deleting ? 0.7 : 1 }}
+              >
+                {deleting ? "…" : "Yes"}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
+                style={{ height: "22px", padding: "0 8px", background: "transparent", border: "1px solid var(--airbnb-hairline)", borderRadius: "4px", fontSize: "11px", color: "var(--airbnb-muted)", cursor: "pointer", fontFamily: "inherit" }}
+              >
+                No
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -293,6 +528,22 @@ function TagImportModal({ workspaceId, onClose, onDone }: {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<TagImportResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  function downloadSample() {
+    const csv = [
+      "filename,tag1,tag2,tag3",
+      "budget-2024.pdf,finance,2024,Q1",
+      "hr-policy.docx,hr,policy,",
+      "project-plan.pptx,projects,planning,",
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "tag-import-sample.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   async function handleUpload() {
     const file = fileRef.current?.files?.[0];
@@ -328,7 +579,7 @@ function TagImportModal({ workspaceId, onClose, onDone }: {
           Upload an <strong>.xlsx</strong> file. Row 1 is a header (skipped). Column A is the filename; columns B onwards are tags — one tag per cell. Existing tags are replaced.
         </p>
 
-        {/* Warning note */}
+        {/* Warning callout */}
         <div style={{ display: "flex", gap: "10px", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: "8px", padding: "12px 14px", marginBottom: "16px" }}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginTop: "1px" }}>
             <path d="M8 1.5L1 14h14L8 1.5z" stroke="#d97706" strokeWidth="1.4" strokeLinejoin="round" fill="none" />
@@ -336,10 +587,11 @@ function TagImportModal({ workspaceId, onClose, onDone }: {
             <circle cx="8" cy="11.5" r="0.75" fill="#d97706" />
           </svg>
           <p style={{ margin: 0, fontSize: "12px", color: "#92400e", lineHeight: 1.6 }}>
-            The filename in column A must <strong>exactly match</strong> a file already uploaded to this workspace (case-insensitive). If the filename doesn&apos;t exist in the system, that row is skipped and no tags are applied. Typing a random or incorrect filename will have no effect.
+            The filename in column A must <strong>exactly match</strong> a file already uploaded to this workspace (case-insensitive). If the filename doesn&apos;t exist, that row is skipped.
           </p>
         </div>
 
+        {/* Example table */}
         <div style={{ background: "var(--airbnb-surface-soft)", border: "1px dashed var(--airbnb-hairline)", borderRadius: "10px", padding: "16px 20px", marginBottom: "16px" }}>
           <p style={{ margin: "0 0 4px", fontSize: "12px", fontWeight: 600, color: "var(--airbnb-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
             Example format
@@ -370,7 +622,21 @@ function TagImportModal({ workspaceId, onClose, onDone }: {
           </table>
         </div>
 
-        <input ref={fileRef} type="file" accept=".xlsx" style={{ marginBottom: "16px", fontSize: "13px", color: "var(--airbnb-ink)" }} />
+        {/* File input + sample download */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+          <input ref={fileRef} type="file" accept=".xlsx" style={{ flex: 1, fontSize: "13px", color: "var(--airbnb-ink)" }} />
+          <button
+            onClick={downloadSample}
+            style={{ height: "32px", padding: "0 12px", background: "transparent", border: "1px solid #c4b5fd", borderRadius: "7px", fontSize: "12px", color: "#7c3aed", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "5px", flexShrink: 0, transition: "background 0.1s ease" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "#ede9fe"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 1v7M3.5 5.5l2.5 3 2.5-3M1 10h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Sample CSV
+          </button>
+        </div>
 
         {error && (
           <p style={{ margin: "0 0 12px", fontSize: "13px", color: "#dc2626", background: "#fee2e2", padding: "10px 14px", borderRadius: "8px" }}>
@@ -406,7 +672,7 @@ function TagImportModal({ workspaceId, onClose, onDone }: {
             <button
               onClick={handleUpload}
               disabled={loading}
-              style={{ height: "36px", padding: "0 16px", background: "var(--airbnb-rausch)", border: "none", borderRadius: "var(--radius-sm)", fontSize: "13px", fontWeight: 600, color: "white", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: loading ? 0.7 : 1 }}
+              style={{ height: "36px", padding: "0 16px", background: "#7c3aed", border: "none", borderRadius: "var(--radius-sm)", fontSize: "13px", fontWeight: 600, color: "white", cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: loading ? 0.7 : 1 }}
             >
               {loading ? "Importing…" : "Import tags"}
             </button>
@@ -420,10 +686,11 @@ function TagImportModal({ workspaceId, onClose, onDone }: {
 // ── Main component ────────────────────────────────────────────
 
 export default function WorkspaceLibrary() {
-  const { apiDocuments, apiWorkspaces, activeWorkspaceId, openPdf, pdfDocId, currentUser, updateApiDocument } = useStore();
+  const { apiDocuments, apiWorkspaces, activeWorkspaceId, currentUser, updateApiDocument, removeApiDocument } = useStore();
   const [query, setQuery] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagImportOpen, setTagImportOpen] = useState(false);
+  const [viewDocId, setViewDocId] = useState<string | null>(null);
 
   const activeWorkspace = apiWorkspaces.find((w) => w.id === activeWorkspaceId);
   const isAdmin = currentUser?.role === "admin";
@@ -458,8 +725,15 @@ export default function WorkspaceLibrary() {
   const totalCount = apiDocuments.length;
   const indexedCount = apiDocuments.filter((d) => d.status === "ready").length;
 
+  async function handleDelete(doc: ApiDocument) {
+    try {
+      await api.documents.delete(doc.id);
+      removeApiDocument(doc.id);
+      if (viewDocId === doc.id) setViewDocId(null);
+    } catch { /* silent */ }
+  }
+
   async function handleTagImportDone() {
-    // Reload document list so tag changes appear without a full page refresh
     if (!activeWorkspaceId) return;
     try {
       const docs = await api.documents.list(activeWorkspaceId);
@@ -467,6 +741,8 @@ export default function WorkspaceLibrary() {
     } catch { /* silent */ }
     setTagImportOpen(false);
   }
+
+  const viewDoc = viewDocId ? apiDocuments.find((d) => d.id === viewDocId) ?? null : null;
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--airbnb-canvas)" }}>
@@ -533,14 +809,12 @@ export default function WorkspaceLibrary() {
           )}
         </div>
 
-        {/* Tag filter strip — top 10 tags by frequency */}
+        {/* Tag filter strip */}
         {topTags.length > 0 && (
           <div style={{ marginTop: "12px", maxWidth: "560px" }}>
             <div
-              style={{
-                display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "2px",
-                scrollbarWidth: "none",
-              }}
+              className="tag-strip"
+              style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "2px", scrollbarWidth: "none" }}
             >
               <style>{`.tag-strip::-webkit-scrollbar { display: none; }`}</style>
               {topTags.map((tag) => {
@@ -552,9 +826,9 @@ export default function WorkspaceLibrary() {
                     style={{
                       flexShrink: 0, height: "28px", padding: "0 12px",
                       borderRadius: "999px", border: "1px solid",
-                      borderColor: active ? "var(--airbnb-ink)" : "var(--airbnb-hairline)",
-                      background: active ? "var(--airbnb-ink)" : "transparent",
-                      color: active ? "white" : "var(--airbnb-body)",
+                      borderColor: active ? "#7c3aed" : "#c4b5fd",
+                      background: active ? "#7c3aed" : "transparent",
+                      color: active ? "white" : "#7c3aed",
                       fontSize: "12px", fontWeight: active ? 600 : 400,
                       cursor: "pointer", fontFamily: "inherit",
                       transition: "background 0.1s ease, border-color 0.1s ease, color 0.1s ease",
@@ -613,8 +887,9 @@ export default function WorkspaceLibrary() {
               <FileRow
                 key={doc.id}
                 doc={doc}
-                isSelected={pdfDocId === doc.id}
-                onClick={() => openPdf(doc.id, 1)}
+                isSelected={viewDocId === doc.id}
+                onClick={() => setViewDocId((prev) => prev === doc.id ? null : doc.id)}
+                onDelete={() => handleDelete(doc)}
               />
             ))}
             {!query && totalCount > MAX_VISIBLE && (
@@ -632,6 +907,10 @@ export default function WorkspaceLibrary() {
           onClose={() => setTagImportOpen(false)}
           onDone={handleTagImportDone}
         />
+      )}
+
+      {viewDoc && (
+        <FileViewModal doc={viewDoc} onClose={() => setViewDocId(null)} />
       )}
     </div>
   );

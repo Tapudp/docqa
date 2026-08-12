@@ -17,7 +17,7 @@ interface StagedFile {
 }
 
 const ACCEPTED = [".pdf", ".docx", ".xlsx", ".pptx", ".png", ".jpg", ".tiff", ".zip"];
-const MAX_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB for bulk upload
+const MAX_BYTES = 200 * 1024 * 1024; // 200 MB per file
 
 function fileSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -231,7 +231,7 @@ export default function BulkUploadModal() {
               {dragging ? "Drop to add files" : "Drag & drop files here"}
             </p>
             <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: "0 0 12px" }}>
-              PDF, DOCX, XLSX, PPTX, PNG, JPG, TIFF, ZIP · Max 10 GB per file
+              PDF, DOCX, XLSX, PPTX, PNG, JPG, TIFF, ZIP · Max 200 MB per file
             </p>
             <label style={{ display: "inline-block", padding: "8px 18px", background: "var(--airbnb-canvas)", border: "1px solid var(--airbnb-hairline)", borderRadius: "var(--radius-sm)", fontSize: "13px", fontWeight: 500, color: "var(--airbnb-ink)", cursor: "pointer" }}>
               Browse files

@@ -467,7 +467,7 @@ export default function WorkspacePage() {
           </main>
         )}
 
-        <RightPanel />
+        {viewMode === "chat" && <RightPanel />}
       </div>
 
       {uploadOpen && <UploadZone />}
