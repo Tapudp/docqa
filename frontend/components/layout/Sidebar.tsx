@@ -298,6 +298,18 @@ export default function Sidebar() {
           )}
         </div>
       </div>
+
+      {/* Powered by NpuDEN — swap <span> for <img src="/npuden-logo.svg"> once logo is ready */}
+      <div style={{ padding: "10px 14px", borderTop: "1px solid var(--airbnb-hairline)", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px" }}>
+        <span style={{ fontSize: "10px", color: "var(--airbnb-muted)", letterSpacing: "0.02em" }}>Powered by</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+          {/* Logo placeholder — replace with: <img src="/npuden-logo.svg" alt="NpuDEN" style={{ height: "16px", width: "auto" }} /> */}
+          <div style={{ width: "18px", height: "18px", borderRadius: "4px", background: "linear-gradient(135deg, #7c3aed, #4f46e5)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <span style={{ fontSize: "8px", fontWeight: 800, color: "white", letterSpacing: "-0.5px" }}>N</span>
+          </div>
+          <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--airbnb-body)", letterSpacing: "-0.2px" }}>NpuDEN</span>
+        </div>
+      </div>
       <style>{`@keyframes spin { to { transform: translateY(-50%) rotate(360deg); } }`}</style>
     </aside>
 

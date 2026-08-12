@@ -309,19 +309,7 @@ function FileViewModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void
             {doc.tags.length > 0 && ` · ${doc.tags.join(", ")}`}
           </p>
         </div>
-        {blobUrl && (
-          <button
-            onClick={handleDownload}
-            style={{ height: "34px", padding: "0 14px", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: "7px", fontSize: "13px", color: "white", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: "6px", flexShrink: 0, transition: "background 0.1s ease" }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.2)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; }}
-          >
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-              <path d="M6.5 1v8M3.5 6.5l3 3 3-3M1 11h11" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            Download
-          </button>
-        )}
+        {/* Download intentionally omitted from header — printing/downloading is disabled in this viewer */}
         <button
           onClick={onClose}
           style={{ width: "34px", height: "34px", borderRadius: "8px", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "background 0.1s ease" }}
@@ -358,7 +346,7 @@ function FileViewModal({ doc, onClose }: { doc: ApiDocument; onClose: () => void
 
         {!loading && !error && blobUrl && isPdf && (
           <iframe
-            src={blobUrl}
+            src={blobUrl + "#toolbar=0&navpanes=0&view=FitH"}
             onClick={(e) => e.stopPropagation()}
             style={{ width: "100%", height: "100%", border: "none", display: "block" }}
           />
@@ -410,14 +398,12 @@ function FileRow({ doc, isSelected, onClick, onDelete }: {
 }) {
   const [hovered, setHovered] = useState(false);
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
 
   return (
     <div
       style={{ position: "relative" }}
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); if (!deleting) setConfirmDelete(false); }}
+      onMouseLeave={() => setHovered(false)}
     >
       <div
         onClick={onClick}
@@ -473,10 +459,10 @@ function FileRow({ doc, isSelected, onClick, onDelete }: {
         <div style={{ display: "flex", alignItems: "center", gap: "6px", paddingTop: "2px", flexShrink: 0 }}>
           <StatusBadge status={doc.status} />
 
-          {/* Delete action */}
-          {hovered && !confirmDelete && (
+          {/* Trash icon — opens confirmation modal in parent */}
+          {hovered && (
             <button
-              onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
               title="Delete file"
               style={{ width: "28px", height: "28px", borderRadius: "6px", background: "transparent", border: "1px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "background 0.1s ease, border-color 0.1s ease" }}
               onMouseEnter={(e) => { e.currentTarget.style.background = "#fee2e2"; e.currentTarget.style.borderColor = "#fca5a5"; }}
@@ -488,24 +474,6 @@ function FileRow({ doc, isSelected, onClick, onDelete }: {
                 <path d="M5 6v3.5M8 6v3.5" stroke="#ef4444" strokeWidth="1.3" strokeLinecap="round" />
               </svg>
             </button>
-          )}
-          {confirmDelete && (
-            <div style={{ display: "flex", alignItems: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
-              <span style={{ fontSize: "11px", color: "#dc2626", fontWeight: 600 }}>Delete?</span>
-              <button
-                onClick={async (e) => { e.stopPropagation(); setDeleting(true); await onDelete(); }}
-                disabled={deleting}
-                style={{ height: "22px", padding: "0 8px", background: "#dc2626", border: "none", borderRadius: "4px", fontSize: "11px", fontWeight: 600, color: "white", cursor: deleting ? "not-allowed" : "pointer", fontFamily: "inherit", opacity: deleting ? 0.7 : 1 }}
-              >
-                {deleting ? "…" : "Yes"}
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
-                style={{ height: "22px", padding: "0 8px", background: "transparent", border: "1px solid var(--airbnb-hairline)", borderRadius: "4px", fontSize: "11px", color: "var(--airbnb-muted)", cursor: "pointer", fontFamily: "inherit" }}
-              >
-                No
-              </button>
-            </div>
           )}
         </div>
       </div>
@@ -683,6 +651,75 @@ function TagImportModal({ workspaceId, onClose, onDone }: {
   );
 }
 
+// ── Delete confirm modal ──────────────────────────────────────
+
+function DeleteConfirmModal({ doc, onClose, onConfirm }: {
+  doc: ApiDocument;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleConfirm() {
+    setDeleting(true);
+    await onConfirm();
+    setDeleting(false);
+  }
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.40)", zIndex: 400, backdropFilter: "blur(2px)" }} />
+      <div style={{
+        position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+        zIndex: 401, background: "var(--airbnb-canvas)", borderRadius: "14px",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.20)", padding: "28px 28px 24px",
+        width: "380px", maxWidth: "calc(100vw - 32px)",
+      }}>
+        {/* Red trash icon */}
+        <div style={{ width: "44px", height: "44px", borderRadius: "11px", background: "#fee2e2", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "18px" }}>
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M3 5.5h14M7.5 5.5V4a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 .5.5v1.5M16 5.5l-1.2 11.1a1 1 0 0 1-1 .9H6.2a1 1 0 0 1-1-.9L4 5.5" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M8 9v5M12 9v5" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </div>
+
+        <p style={{ fontSize: "16px", fontWeight: 700, color: "var(--airbnb-ink)", margin: "0 0 8px" }}>
+          Delete this file?
+        </p>
+        <p style={{ fontSize: "13px", color: "var(--airbnb-body)", margin: "0 0 6px", lineHeight: 1.55 }}>
+          <strong style={{ color: "var(--airbnb-ink)" }}>{doc.filename}</strong>
+        </p>
+        <p style={{ fontSize: "13px", color: "var(--airbnb-muted)", margin: "0 0 24px", lineHeight: 1.55 }}>
+          The file and all its indexed content will be permanently deleted. This action cannot be undone.
+        </p>
+
+        <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+          <button
+            onClick={onClose}
+            disabled={deleting}
+            style={{ height: "38px", padding: "0 18px", background: "transparent", border: "1px solid var(--airbnb-hairline)", borderRadius: "var(--radius-sm)", fontSize: "13px", color: "var(--airbnb-body)", cursor: deleting ? "not-allowed" : "pointer", fontFamily: "inherit" }}
+            onMouseEnter={(e) => { if (!deleting) e.currentTarget.style.background = "var(--airbnb-surface-soft)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={deleting}
+            style={{ height: "38px", padding: "0 18px", background: deleting ? "#fca5a5" : "#ef4444", border: "none", borderRadius: "var(--radius-sm)", fontSize: "13px", fontWeight: 600, color: "white", cursor: deleting ? "not-allowed" : "pointer", fontFamily: "inherit", transition: "background 0.12s ease, transform 0.1s ease", minWidth: "120px" }}
+            onMouseEnter={(e) => { if (!deleting) e.currentTarget.style.background = "#dc2626"; }}
+            onMouseLeave={(e) => { if (!deleting) e.currentTarget.style.background = "#ef4444"; }}
+            onMouseDown={(e) => { if (!deleting) e.currentTarget.style.transform = "scale(0.97)"; }}
+            onMouseUp={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
+          >
+            {deleting ? "Deleting…" : "Yes, delete file"}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────
 
 export default function WorkspaceLibrary() {
@@ -691,6 +728,7 @@ export default function WorkspaceLibrary() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagImportOpen, setTagImportOpen] = useState(false);
   const [viewDocId, setViewDocId] = useState<string | null>(null);
+  const [docToDelete, setDocToDelete] = useState<ApiDocument | null>(null);
 
   const activeWorkspace = apiWorkspaces.find((w) => w.id === activeWorkspaceId);
   const isAdmin = currentUser?.role === "admin";
@@ -725,12 +763,15 @@ export default function WorkspaceLibrary() {
   const totalCount = apiDocuments.length;
   const indexedCount = apiDocuments.filter((d) => d.status === "ready").length;
 
-  async function handleDelete(doc: ApiDocument) {
+  async function handleDeleteConfirm() {
+    if (!docToDelete) return;
     try {
-      await api.documents.delete(doc.id);
-      removeApiDocument(doc.id);
-      if (viewDocId === doc.id) setViewDocId(null);
-    } catch { /* silent */ }
+      await api.documents.delete(docToDelete.id);
+      removeApiDocument(docToDelete.id);
+      if (viewDocId === docToDelete.id) setViewDocId(null);
+    } catch { /* silent */ } finally {
+      setDocToDelete(null);
+    }
   }
 
   async function handleTagImportDone() {
@@ -889,7 +930,7 @@ export default function WorkspaceLibrary() {
                 doc={doc}
                 isSelected={viewDocId === doc.id}
                 onClick={() => setViewDocId((prev) => prev === doc.id ? null : doc.id)}
-                onDelete={() => handleDelete(doc)}
+                onDelete={() => setDocToDelete(doc)}
               />
             ))}
             {!query && totalCount > MAX_VISIBLE && (
@@ -911,6 +952,14 @@ export default function WorkspaceLibrary() {
 
       {viewDoc && (
         <FileViewModal doc={viewDoc} onClose={() => setViewDocId(null)} />
+      )}
+
+      {docToDelete && (
+        <DeleteConfirmModal
+          doc={docToDelete}
+          onClose={() => setDocToDelete(null)}
+          onConfirm={handleDeleteConfirm}
+        />
       )}
     </div>
   );

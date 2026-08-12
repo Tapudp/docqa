@@ -198,24 +198,20 @@ export default function WorkspacePage() {
           gap: "16px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
-          <div
-            style={{
-              width: "24px",
-              height: "24px",
-              background: "var(--airbnb-rausch)",
-              borderRadius: "6px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-              <path d="M2 3h9M2 6.5h6M2 10h7" stroke="white" strokeWidth="1.7" strokeLinecap="round" />
-            </svg>
+        {/* Customer logo — NID · swap the placeholder for <img src="/nid-logo.svg" alt="NID" style={{ height: "28px", width: "auto" }} /> once logo file is added to /public */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 10px", borderRadius: "7px", border: "1px solid var(--airbnb-hairline)", background: "var(--airbnb-surface-soft)" }}>
+            {/* NID logo placeholder */}
+            <div style={{ width: "22px", height: "22px", borderRadius: "4px", background: "#1e3a8a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <span style={{ fontSize: "9px", fontWeight: 800, color: "white", letterSpacing: "-0.5px" }}>NID</span>
+            </div>
+            <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--airbnb-ink)", letterSpacing: "-0.1px", whiteSpace: "nowrap" }}>
+              National Institute of Design
+            </span>
           </div>
-          <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--airbnb-ink)", letterSpacing: "-0.2px" }}>
-            REVERB by NpuDen
+          <div style={{ width: "1px", height: "18px", background: "var(--airbnb-hairline)" }} />
+          <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--airbnb-muted)", letterSpacing: "-0.1px" }}>
+            REVERB
           </span>
         </div>
 
