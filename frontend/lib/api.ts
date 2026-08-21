@@ -4,6 +4,16 @@ import type { ApiUser, ApiWorkspace, ApiDocument, ApiConversation, ApiMessage, T
 // Override NEXT_PUBLIC_API_URL for local dev if running frontend separately (e.g. http://localhost:8000).
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
+// For SSE streaming only: call the API NodePort directly from the browser to avoid
+// Next.js response buffering, which prevents SSE chunks from flushing mid-stream.
+// In prod K8s the frontend is on port 30300 and the API NodePort is 30800.
+function getDirectApiBase(): string {
+  if (typeof window === "undefined") return BASE;
+  const { protocol, hostname, port } = window.location;
+  if (port === "30300") return `${protocol}//${hostname}:30800`;
+  return BASE;
+}
+
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("docqa_token");
@@ -127,7 +137,7 @@ export const api = {
       onError: (err: string) => void,
     ): Promise<void> => {
       const token = getToken();
-      const res = await fetch(`${BASE}/api/conversations/${conversationId}/chat`, {
+      const res = await fetch(`${getDirectApiBase()}/api/conversations/${conversationId}/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
