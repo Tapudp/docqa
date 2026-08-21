@@ -7,6 +7,9 @@ const INTERNAL_API_PORT = parseInt(process.env.INTERNAL_API_PORT ?? "8000", 10);
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+// NOTE: This route handler is a fallback for non-prod environments (localhost dev).
+// In production K8s the browser calls the API NodePort (30800) directly to avoid
+// Next.js response buffering which prevents SSE chunks from flushing mid-stream.
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } },
@@ -14,23 +17,9 @@ export async function POST(
   const authHeader = request.headers.get("Authorization");
   const body = await request.text();
 
-  const encoder = new TextEncoder();
-
   const stream = new ReadableStream({
     start(controller) {
       let done = false;
-      let chunkCount = 0;
-
-      const heartbeat = setInterval(() => {
-        if (!done) {
-          try {
-            controller.enqueue(encoder.encode(": keep-alive\n\n"));
-          } catch (e) {
-            console.error("[SSE] heartbeat enqueue failed:", e);
-            clearInterval(heartbeat);
-          }
-        }
-      }, 3000);
 
       const req = http.request(
         {
@@ -44,47 +33,27 @@ export async function POST(
           },
         },
         (res) => {
-          console.log("[SSE] upstream connected, status:", res.statusCode);
-
           res.on("data", (chunk: Buffer) => {
-            chunkCount++;
-            console.log(`[SSE] chunk #${chunkCount}, size=${chunk.length}`);
-            try {
-              controller.enqueue(chunk);
-            } catch (e) {
-              console.error("[SSE] enqueue failed:", e);
-            }
+            if (!done) try { controller.enqueue(chunk); } catch {}
           });
-
           res.on("end", () => {
-            console.log(`[SSE] upstream ended after ${chunkCount} chunks`);
             done = true;
-            clearInterval(heartbeat);
             try { controller.close(); } catch {}
           });
-
           res.on("error", (err) => {
-            console.error("[SSE] upstream error:", err.message);
             done = true;
-            clearInterval(heartbeat);
             try { controller.error(err); } catch {}
           });
         },
       );
 
       req.on("error", (err) => {
-        console.error("[SSE] request error:", err.message);
         done = true;
-        clearInterval(heartbeat);
         try { controller.error(err); } catch {}
       });
 
       req.write(body);
       req.end();
-      console.log("[SSE] request sent to upstream");
-    },
-    cancel(reason) {
-      console.log("[SSE] stream cancelled by consumer:", reason);
     },
   });
 
