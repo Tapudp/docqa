@@ -14,57 +14,49 @@ export async function POST(
   const authHeader = request.headers.get("Authorization");
   const body = await request.text();
 
-  // Use node:http directly to bypass Next.js's patched global fetch
-  // (Next.js patches fetch for caching/dedup which can consume the SSE body)
-  return new Promise<Response>((resolve) => {
-    const { readable, writable } = new TransformStream();
-    const writer = writable.getWriter();
-
-    const req = http.request(
-      {
-        hostname: INTERNAL_API_HOST,
-        port: INTERNAL_API_PORT,
-        path: `/api/conversations/${params.id}/chat`,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(authHeader ? { Authorization: authHeader } : {}),
+  const stream = new ReadableStream({
+    start(controller) {
+      const req = http.request(
+        {
+          hostname: INTERNAL_API_HOST,
+          port: INTERNAL_API_PORT,
+          path: `/api/conversations/${params.id}/chat`,
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(authHeader ? { Authorization: authHeader } : {}),
+          },
         },
-      },
-      (res) => {
-        resolve(
-          new Response(readable, {
-            status: res.statusCode ?? 200,
-            headers: {
-              "Content-Type": "text/event-stream",
-              "Cache-Control": "no-cache, no-transform",
-              "X-Accel-Buffering": "no",
-              "Content-Encoding": "identity",
-              "Connection": "keep-alive",
-            },
-          }),
-        );
+        (res) => {
+          res.on("data", (chunk: Buffer) => {
+            controller.enqueue(chunk);
+          });
+          res.on("end", () => {
+            controller.close();
+          });
+          res.on("error", (err) => {
+            controller.error(err);
+          });
+        },
+      );
 
-        res.on("data", (chunk: Buffer) => {
-          writer.write(chunk).catch(() => {});
-        });
+      req.on("error", (err) => {
+        controller.error(err);
+      });
 
-        res.on("end", () => {
-          writer.close().catch(() => {});
-        });
+      req.write(body);
+      req.end();
+    },
+  });
 
-        res.on("error", (err) => {
-          writer.abort(err).catch(() => {});
-        });
-      },
-    );
-
-    req.on("error", (err) => {
-      writer.abort(err).catch(() => {});
-      resolve(new Response("upstream error", { status: 502 }));
-    });
-
-    req.write(body);
-    req.end();
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+      "Content-Encoding": "identity",
+      "Connection": "keep-alive",
+    },
   });
 }
