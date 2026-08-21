@@ -133,6 +133,7 @@ export default function WorkspacePage() {
         setStreamingCitations(citations as Citation[]);
       },
       (token) => {
+        setThinking(false);
         appendStreamingToken(token);
       },
       async () => {

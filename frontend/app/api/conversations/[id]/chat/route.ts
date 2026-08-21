@@ -23,13 +23,15 @@ export async function POST(
     },
   );
 
-  // Pass the upstream ReadableStream directly — no buffering
+  // Pass through the SSE stream with no compression (gzip would buffer until close)
   return new Response(upstream.body, {
     status: upstream.status,
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
       "X-Accel-Buffering": "no",
+      "Content-Encoding": "identity",
+      "Connection": "keep-alive",
     },
   });
 }
