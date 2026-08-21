@@ -731,7 +731,8 @@ export default function WorkspaceLibrary() {
   const [docToDelete, setDocToDelete] = useState<ApiDocument | null>(null);
 
   const activeWorkspace = apiWorkspaces.find((w) => w.id === activeWorkspaceId);
-  const isAdmin = currentUser?.role === "admin";
+  const isAdmin =
+    currentUser?.role === "admin" || activeWorkspace?.member_role === "admin";
 
   // Top 10 tags by number of documents that carry them
   const topTags = useMemo(() => {

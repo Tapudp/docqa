@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import require_admin
+from app.auth.deps import get_current_user, require_admin
 from app.auth.password import hash_password
 from app.config import settings
 from app.database import get_db
@@ -703,15 +703,19 @@ class TagImportResult(BaseModel):
     reason: str | None = None
 
 
+_ROLE_RANK: dict[str, int] = {"viewer": 0, "member": 1, "admin": 2}
+
+
 @router.post("/workspaces/{workspace_id}/documents/tags/bulk", response_model=list[TagImportResult])
 async def admin_bulk_import_tags(
     workspace_id: str,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Upload an Excel (.xlsx) file to set tags in bulk.
+    Requires global admin OR workspace-level admin role.
 
     Format:
       - Row 1: header row (skipped)
@@ -722,6 +726,17 @@ async def admin_bulk_import_tags(
     Existing tags on a document are replaced entirely.
     """
     import openpyxl  # noqa: PLC0415
+
+    # Allow global admins or workspace-level admins
+    if current_user.role != "admin":
+        membership = await db.scalar(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == _uuid.UUID(workspace_id),
+                WorkspaceMember.user_id == current_user.id,
+            )
+        )
+        if not membership or _ROLE_RANK.get(membership.role, 0) < _ROLE_RANK["admin"]:
+            raise HTTPException(status_code=403, detail="Workspace admin role required")
 
     ws_obj = await db.get(Workspace, _uuid.UUID(workspace_id))
     if not ws_obj:
