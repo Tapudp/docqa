@@ -19,14 +19,14 @@ export async function POST(
   const stream = new ReadableStream({
     start(controller) {
       let done = false;
+      let chunkCount = 0;
 
-      // Send SSE keep-alive comments every 3s so Next.js doesn't close the connection
-      // during the ~40s gap while Ollama generates the response
       const heartbeat = setInterval(() => {
         if (!done) {
           try {
             controller.enqueue(encoder.encode(": keep-alive\n\n"));
-          } catch {
+          } catch (e) {
+            console.error("[SSE] heartbeat enqueue failed:", e);
             clearInterval(heartbeat);
           }
         }
@@ -44,32 +44,47 @@ export async function POST(
           },
         },
         (res) => {
+          console.log("[SSE] upstream connected, status:", res.statusCode);
+
           res.on("data", (chunk: Buffer) => {
-            controller.enqueue(chunk);
+            chunkCount++;
+            console.log(`[SSE] chunk #${chunkCount}, size=${chunk.length}`);
+            try {
+              controller.enqueue(chunk);
+            } catch (e) {
+              console.error("[SSE] enqueue failed:", e);
+            }
           });
 
           res.on("end", () => {
+            console.log(`[SSE] upstream ended after ${chunkCount} chunks`);
             done = true;
             clearInterval(heartbeat);
-            controller.close();
+            try { controller.close(); } catch {}
           });
 
           res.on("error", (err) => {
+            console.error("[SSE] upstream error:", err.message);
             done = true;
             clearInterval(heartbeat);
-            controller.error(err);
+            try { controller.error(err); } catch {}
           });
         },
       );
 
       req.on("error", (err) => {
+        console.error("[SSE] request error:", err.message);
         done = true;
         clearInterval(heartbeat);
-        controller.error(err);
+        try { controller.error(err); } catch {}
       });
 
       req.write(body);
       req.end();
+      console.log("[SSE] request sent to upstream");
+    },
+    cancel(reason) {
+      console.log("[SSE] stream cancelled by consumer:", reason);
     },
   });
 
