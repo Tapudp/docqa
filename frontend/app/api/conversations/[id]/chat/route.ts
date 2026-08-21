@@ -14,8 +14,24 @@ export async function POST(
   const authHeader = request.headers.get("Authorization");
   const body = await request.text();
 
+  const encoder = new TextEncoder();
+
   const stream = new ReadableStream({
     start(controller) {
+      let done = false;
+
+      // Send SSE keep-alive comments every 3s so Next.js doesn't close the connection
+      // during the ~40s gap while Ollama generates the response
+      const heartbeat = setInterval(() => {
+        if (!done) {
+          try {
+            controller.enqueue(encoder.encode(": keep-alive\n\n"));
+          } catch {
+            clearInterval(heartbeat);
+          }
+        }
+      }, 3000);
+
       const req = http.request(
         {
           hostname: INTERNAL_API_HOST,
@@ -31,16 +47,24 @@ export async function POST(
           res.on("data", (chunk: Buffer) => {
             controller.enqueue(chunk);
           });
+
           res.on("end", () => {
+            done = true;
+            clearInterval(heartbeat);
             controller.close();
           });
+
           res.on("error", (err) => {
+            done = true;
+            clearInterval(heartbeat);
             controller.error(err);
           });
         },
       );
 
       req.on("error", (err) => {
+        done = true;
+        clearInterval(heartbeat);
         controller.error(err);
       });
 
