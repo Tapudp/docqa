@@ -60,9 +60,10 @@ spec:
       labels:
         app: vllm
     spec:
-      # Pin to ubuntu-server — that's where the Ollama model blobs are stored.
+      # Pin to nid-practice — the A40 48 GB with a working NVIDIA device plugin.
+      # (ubuntu-server's device plugin is in CrashLoopBackOff.)
       nodeSelector:
-        kubernetes.io/hostname: ubuntu-server
+        kubernetes.io/hostname: nid-practice
 
       # Give the model time to load from disk before liveness checks fire.
       # Q4_K_M 18 GB loads in ~20-40s depending on disk speed.
@@ -77,11 +78,10 @@ spec:
           command: ["python", "-m", "vllm.entrypoints.openai.api_server"]
           args:
             # ── Model ────────────────────────────────────────────────────────
-            # Direct path to the Ollama blob file — reuses existing download.
-            # Ollama blob names are SHA256 hashes; vLLM identifies GGUF by
-            # magic bytes, not file extension.
+            # GGUF file copied from ubuntu-server's Ollama blob store.
+            # vLLM identifies GGUF by magic bytes, not file extension.
             - --model
-            - /models/blobs/sha256-7121486771cbfe218851513210c40b35dbdee93ab1ef43fe36283c883980f0df
+            - /models/blobs/gemma4-26b-q4km.gguf
             - --load-format
             - gguf
             # Serve under the same name Ollama used so DocQA config is minimal.
@@ -160,10 +160,11 @@ spec:
 
       volumes:
         - name: ollama-blobs
-          # HostPath directly into Ollama's blob store on this node.
+          # Model files copied from ubuntu-server's Ollama store to this path
+          # on nid-practice. See setup step in the vLLM runbook.
           hostPath:
-            path: /usr/share/ollama/.ollama/models/blobs
-            type: Directory
+            path: /home/nidp/vllm-models
+            type: DirectoryOrCreate
 
         - name: vllm-config
           configMap:
