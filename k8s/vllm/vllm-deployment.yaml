@@ -1,0 +1,197 @@
+# vLLM — OpenAI-compatible LLM serving for the NID enterprise cluster
+#
+# Runs on ubuntu-server (172.16.200.101) because the Ollama model blobs
+# are already stored at /usr/share/ollama/.ollama/models/blobs on that node.
+# Mounts the blob directory directly — no model re-download needed.
+#
+# Apply:  kubectl apply -f vllm-deployment.yaml
+# Delete: kubectl delete -f vllm-deployment.yaml
+#
+# After apply, the internal endpoint is:
+#   http://vllm.ai-services.svc.cluster.local:8000/v1
+# External (NodePort):
+#   http://172.16.200.101:30900/v1  (or any node IP)
+
+---
+# ── Chat-template ConfigMap ──────────────────────────────────────────────────
+# Gemma 4's Jinja2 chat template — embedded so we don't need a HuggingFace
+# token to fetch the tokenizer_config.json from google/gemma-4-27b-it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vllm-config
+  namespace: ai-services
+data:
+  chat_template.jinja: |
+    {{ bos_token }}
+    {%- for message in messages %}
+      {%- if message['role'] == 'system' %}
+        {{- '<start_of_turn>user\n' + message['content'] + '<end_of_turn>\n' }}
+      {%- elif message['role'] == 'user' %}
+        {{- '<start_of_turn>user\n' + message['content'] + '<end_of_turn>\n' }}
+      {%- elif message['role'] == 'assistant' %}
+        {{- '<start_of_turn>model\n' + message['content'] + '<end_of_turn>\n' }}
+      {%- endif %}
+    {%- endfor %}
+    {%- if add_generation_prompt %}
+      {{- '<start_of_turn>model\n' }}
+    {%- endif %}
+
+---
+# ── Deployment ───────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+  namespace: ai-services
+  labels:
+    app: vllm
+spec:
+  replicas: 1
+  # Recreate is required: only one pod can hold the GPU at a time.
+  # Brief downtime (~30s) during upgrades is acceptable.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: vllm
+  template:
+    metadata:
+      labels:
+        app: vllm
+    spec:
+      # Pin to ubuntu-server — that's where the Ollama model blobs are stored.
+      nodeSelector:
+        kubernetes.io/hostname: ubuntu-server
+
+      # Give the model time to load from disk before liveness checks fire.
+      # Q4_K_M 18 GB loads in ~20-40s depending on disk speed.
+      terminationGracePeriodSeconds: 60
+
+      containers:
+        - name: vllm
+          # Use a pinned minor version in production once validated.
+          image: vllm/vllm-openai:latest
+          imagePullPolicy: IfNotPresent
+
+          command: ["python", "-m", "vllm.entrypoints.openai.api_server"]
+          args:
+            # ── Model ────────────────────────────────────────────────────────
+            # Direct path to the Ollama blob file — reuses existing download.
+            # Ollama blob names are SHA256 hashes; vLLM identifies GGUF by
+            # magic bytes, not file extension.
+            - --model
+            - /models/blobs/sha256-7121486771cbfe218851513210c40b35dbdee93ab1ef43fe36283c883980f0df
+            - --load-format
+            - gguf
+            # Serve under the same name Ollama used so DocQA config is minimal.
+            - --served-model-name
+            - gemma4:26b
+            # Also register the canonical HF name so OpenWebUI can find it.
+            - --served-model-name
+            - google/gemma-4-27b-it
+
+            # ── Tokenizer ────────────────────────────────────────────────────
+            # Chat template injected from ConfigMap — no HF token required.
+            - --chat-template
+            - /config/chat_template.jinja
+
+            # ── Context & Memory ─────────────────────────────────────────────
+            # 8 192 tokens covers most RAG use-cases (retrieved chunks + answer).
+            # Increase to 16384 if GPU VRAM allows after profiling.
+            - --max-model-len
+            - "8192"
+            - --gpu-memory-utilization
+            - "0.90"
+
+            # ── Server ───────────────────────────────────────────────────────
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8000"
+            - --disable-log-requests
+
+          ports:
+            - containerPort: 8000
+              name: http
+
+          resources:
+            requests:
+              nvidia.com/gpu: "1"
+              memory: "4Gi"
+              cpu: "2"
+            limits:
+              nvidia.com/gpu: "1"
+              memory: "8Gi"
+
+          # /dev/shm must be large enough for CUDA IPC tensors.
+          # Default 64 MB is too small for large models.
+          volumeMounts:
+            - name: ollama-blobs
+              mountPath: /models/blobs
+              readOnly: true
+            - name: vllm-config
+              mountPath: /config
+            - name: shm
+              mountPath: /dev/shm
+
+          # Wait up to 5 min for the model to load before marking unhealthy.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            failureThreshold: 60
+            periodSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+      volumes:
+        - name: ollama-blobs
+          # HostPath directly into Ollama's blob store on this node.
+          hostPath:
+            path: /usr/share/ollama/.ollama/models/blobs
+            type: Directory
+
+        - name: vllm-config
+          configMap:
+            name: vllm-config
+
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: "8Gi"
+
+---
+# ── Service ──────────────────────────────────────────────────────────────────
+# ClusterIP for internal cluster access (DocQA, other apps).
+# NodePort 30900 for external access (OpenWebUI, curl testing).
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm
+  namespace: ai-services
+  labels:
+    app: vllm
+spec:
+  selector:
+    app: vllm
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      nodePort: 30900
+      protocol: TCP
+  type: NodePort

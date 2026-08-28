@@ -1,0 +1,17 @@
+# Fix the DocQA API deployment strategy from RollingUpdate to Recreate.
+#
+# The API pod uses hostPort, which causes a port conflict during rolling updates
+# (new pod can't schedule while old pod holds the port). Recreate avoids this
+# by terminating the old pod first — brief downtime (~10s) is acceptable.
+#
+# Apply: kubectl patch deployment api -n docqa --patch-file api-deployment-patch.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: docqa
+spec:
+  strategy:
+    type: Recreate
+    rollingUpdate: null

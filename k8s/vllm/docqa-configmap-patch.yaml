@@ -1,0 +1,19 @@
+# Patch the docqa-config ConfigMap to point to vLLM instead of Ollama.
+#
+# Apply: kubectl patch configmap docqa-config -n docqa --patch-file docqa-configmap-patch.yaml
+#
+# After applying, restart api and celery-worker so they pick up the new env vars:
+#   kubectl rollout restart deployment/api deployment/celery-worker -n docqa
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: docqa-config
+  namespace: docqa
+data:
+  # vLLM internal endpoint — served via K8s service in ai-services namespace.
+  LLM_BASE_URL: "http://vllm.ai-services.svc.cluster.local:8000"
+  # Match the --served-model-name registered in vLLM.
+  LLM_MODEL: "gemma4:26b"
+  # vLLM uses the OpenAI API — any non-empty string works as the key.
+  LLM_API_KEY: "vllm"
