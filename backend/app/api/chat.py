@@ -5,6 +5,38 @@ import re
 import uuid
 from typing import AsyncIterator
 
+# Patterns that indicate the user is chatting, not asking about documents.
+_CONVERSATIONAL_RE = re.compile(
+    r"^\s*("
+    r"hi\b|hello\b|hey\b|greetings?\b|howdy\b|"
+    r"good\s+(morning|afternoon|evening|day|night)\b|"
+    r"thanks?\b|thank\s+you\b|ty\b|thx\b|cheers\b|"
+    r"ok\b|okay\b|got\s+it\b|great\b|nice\b|cool\b|awesome\b|perfect\b|"
+    r"bye\b|goodbye\b|see\s+you\b|"
+    r"yes\b|no\b|sure\b|nope\b|yep\b|yup\b|"
+    r"who\s+are\s+you\b|what\s+are\s+you\b|what\s+can\s+you\s+do\b|"
+    r"what\s+is\s+your\s+name\b|what('s|\s+is)\s+your\s+purpose\b|"
+    r"how\s+are\s+you\b|how\s+do\s+you\s+do\b|how\s+can\s+you\s+help\b"
+    r")\s*[?!.,]?\s*$",
+    re.IGNORECASE,
+)
+_DOMAIN_MARKERS = frozenset({
+    "what", "how", "where", "when", "which", "who", "why",
+    "compare", "difference", "explain", "describe", "list",
+    "find", "show", "tell", "define", "summarize", "summary",
+    "rule", "section", "clause", "article", "chapter", "policy",
+    "document", "file", "page", "report", "data",
+})
+
+
+def _is_conversational(text: str) -> bool:
+    """True for greetings and short chit-chat that don't need RAG."""
+    stripped = text.strip()
+    if _CONVERSATIONAL_RE.match(stripped):
+        return True
+    words = stripped.split()
+    return len(words) <= 4 and not any(w.lower() in _DOMAIN_MARKERS for w in words)
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
@@ -232,24 +264,31 @@ async def chat(
     r_multiplier = int(ret_cfg.get("inner_k_multiplier", 5))
     r_multi_query = bool(ret_cfg.get("multi_query", True))
 
-    # Retrieve relevant chunks — uses multi-query when question references multiple entities
-    hits = await retrieve(
-        db, conv.workspace_id, body.question,
-        top_k=r_top_k,
-        inner_k_multiplier=r_multiplier,
-        multi_query=r_multi_query,
-    )
+    # Skip retrieval for greetings / small talk — no document context needed
+    is_conv = _is_conversational(body.question)
 
-    citations = [
-        {
-            "chunk_id": h.chunk_id,
-            "document_id": h.document_id,
-            "filename": h.filename,
-            "page_numbers": h.page_numbers,
-            "snippet": h.text[:200],
-        }
-        for h in hits
-    ]
+    if is_conv:
+        hits = []
+        citations = []
+    else:
+        # Retrieve relevant chunks — uses multi-query when question references multiple entities
+        hits = await retrieve(
+            db, conv.workspace_id, body.question,
+            top_k=r_top_k,
+            inner_k_multiplier=r_multiplier,
+            multi_query=r_multi_query,
+        )
+
+        citations = [
+            {
+                "chunk_id": h.chunk_id,
+                "document_id": h.document_id,
+                "filename": h.filename,
+                "page_numbers": h.page_numbers,
+                "snippet": h.text[:200],
+            }
+            for h in hits
+        ]
 
     # Group chunks by document so the LLM sees clear document boundaries.
     # This prevents cross-document attribution errors (e.g. answering about
@@ -292,7 +331,7 @@ async def chat(
         try:
             yield f"data: {json.dumps({'type': 'citations', 'citations': citations})}\n\n".encode()
 
-            async for token in stream_chat(history, context_chunks, llm_config):
+            async for token in stream_chat(history, context_chunks, llm_config, conversational=is_conv):
                 full_response.append(token)
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n".encode()
 
@@ -314,8 +353,8 @@ async def chat(
                         })
                         final_citations.append({**c, "page_numbers": all_pages})
 
-            # Fallback: if LLM cited no known doc, keep top result
-            if not final_citations and citations:
+            # Fallback: keep top result only when this was a real document query
+            if not final_citations and citations and not is_conv:
                 final_citations = [citations[0]]
 
             assistant_msg = Message(

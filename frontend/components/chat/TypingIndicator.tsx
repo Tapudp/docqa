@@ -1,6 +1,18 @@
 "use client";
 
+import { useState, useEffect } from "react";
+
 export default function TypingIndicator() {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const start = Date.now();
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 500);
+    return () => clearInterval(id);
+  }, []);
+
+  const label = elapsed < 5 ? "Thinking…" : elapsed < 20 ? `Thinking… ${elapsed}s` : `Still thinking… ${elapsed}s`;
+
   return (
     <>
       <style>{`
@@ -15,7 +27,6 @@ export default function TypingIndicator() {
       `}</style>
 
       <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "4px 0" }}>
-        {/* Avatar */}
         <div
           style={{
             flexShrink: 0,
@@ -34,7 +45,6 @@ export default function TypingIndicator() {
           </svg>
         </div>
 
-        {/* Bubble */}
         <div
           style={{
             background: "var(--airbnb-canvas)",
@@ -52,7 +62,7 @@ export default function TypingIndicator() {
           </span>
 
           <span style={{ fontSize: "18px", fontWeight: 700, color: "var(--airbnb-ink)", letterSpacing: "-0.3px" }}>
-            Thinking…
+            {label}
           </span>
 
           <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>

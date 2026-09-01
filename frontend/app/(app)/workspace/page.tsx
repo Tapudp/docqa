@@ -34,6 +34,9 @@ export default function WorkspacePage() {
   const [thinking, setThinking] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Prevents the messages-reload effect from wiping the optimistic user message
+  // when we just created a brand-new conversation (it would fetch [] and clear it).
+  const skipNextMessageFetchRef = useRef(false);
 
   const displayName = currentUser?.display_name || currentUser?.email?.split("@")[0] || "User";
   const avatarInitial = displayName[0].toUpperCase();
@@ -78,6 +81,7 @@ export default function WorkspacePage() {
   // Load messages when active conversation changes
   useEffect(() => {
     if (!activeConversationId) { setMessages([]); return; }
+    if (skipNextMessageFetchRef.current) { skipNextMessageFetchRef.current = false; return; }
     api.chat.listMessages(activeConversationId).then(setMessages).catch(() => {});
   }, [activeConversationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -107,6 +111,7 @@ export default function WorkspacePage() {
     if (!convId) {
       const conv = await api.chat.createConversation(activeWorkspaceId);
       addConversation(conv);
+      skipNextMessageFetchRef.current = true; // conversation is empty — no need to fetch
       setActiveConversationId(conv.id);
       convId = conv.id;
     }
