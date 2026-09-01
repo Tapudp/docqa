@@ -335,27 +335,21 @@ async def chat(
                 full_response.append(token)
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n".encode()
 
-            # Filter citations to only docs the LLM actually referenced
+            # Deduplicate retrieved docs by document_id and merge all page numbers.
+            # We show every doc that retrieval surfaced — filtering by whether the LLM
+            # happened to spell the exact filename is too fragile and drops real sources.
             assistant_content = "".join(full_response)
-            content_lower = assistant_content.lower()
             seen_docs: set[str] = set()
             final_citations = []
             for c in citations:
-                stem = c["filename"].rsplit(".", 1)[0].lower()
-                if stem in content_lower or c["filename"].lower() in content_lower:
-                    if c["document_id"] not in seen_docs:
-                        seen_docs.add(c["document_id"])
-                        # Merge all page numbers retrieved for this doc
-                        all_pages = sorted({
-                            p for cc in citations
-                            if cc["document_id"] == c["document_id"]
-                            for p in cc["page_numbers"]
-                        })
-                        final_citations.append({**c, "page_numbers": all_pages})
-
-            # Fallback: keep top result only when this was a real document query
-            if not final_citations and citations and not is_conv:
-                final_citations = [citations[0]]
+                if c["document_id"] not in seen_docs:
+                    seen_docs.add(c["document_id"])
+                    all_pages = sorted({
+                        p for cc in citations
+                        if cc["document_id"] == c["document_id"]
+                        for p in cc["page_numbers"]
+                    })
+                    final_citations.append({**c, "page_numbers": all_pages})
 
             assistant_msg = Message(
                 conversation_id=conv.id,
@@ -366,7 +360,7 @@ async def chat(
             db.add(assistant_msg)
             await db.commit()
 
-            yield f"data: {json.dumps({'type': 'done'})}\n\n".encode()
+            yield f"data: {json.dumps({'type': 'done', 'citations': final_citations})}\n\n".encode()
 
         except Exception as exc:
             logger.exception("stream error: %s", exc)

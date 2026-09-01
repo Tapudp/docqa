@@ -167,7 +167,12 @@ export const api = {
           const payload = JSON.parse(line.slice(6));
           if (payload.type === "citations") onCitations(payload.citations);
           else if (payload.type === "token") onToken(payload.content);
-          else if (payload.type === "done") onDone();
+          else if (payload.type === "done") {
+            // Backend sends final deduplicated citations in the done event —
+            // update them before clearing the streaming state.
+            if (payload.citations) onCitations(payload.citations);
+            onDone();
+          }
           else if (payload.type === "error") onError(payload.message);
         }
       }
