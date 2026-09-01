@@ -1,41 +1,20 @@
-# vLLM — OpenAI-compatible LLM serving for the NID enterprise cluster
+# Ollama — OpenAI-compatible LLM serving for the NID enterprise cluster
 #
-# Runs on ubuntu-server (172.16.200.101) because the Ollama model blobs
-# are already stored at /usr/share/ollama/.ollama/models/blobs on that node.
-# Mounts the blob directory directly — no model re-download needed.
+# Runs on nidubuntu (172.16.200.123) — A40 48GB with working GPU driver.
+# Model: Gemma 4 27B Q4_K_M GGUF at /var/lib/vllm-models/blobs/ on nidubuntu.
+#
+# Deployment sequence on first start:
+#   1. Container starts; ollama serve listens on :8000 in background
+#   2. Startup script runs "ollama create gemma4:26b" from the GGUF (~2 min to hash 17GB)
+#   3. Model is available; pod becomes Ready
+#   On subsequent restarts the blob is already in /var/lib/ollama → instant startup.
 #
 # Apply:  kubectl apply -f vllm-deployment.yaml
+# Scale:  kubectl scale deployment/vllm -n ai-services --replicas=1
 # Delete: kubectl delete -f vllm-deployment.yaml
 #
-# After apply, the internal endpoint is:
-#   http://vllm.ai-services.svc.cluster.local:8000/v1
-# External (NodePort):
-#   http://172.16.200.101:30900/v1  (or any node IP)
-
----
-# ── Chat-template ConfigMap ──────────────────────────────────────────────────
-# Gemma 4's Jinja2 chat template — embedded so we don't need a HuggingFace
-# token to fetch the tokenizer_config.json from google/gemma-4-27b-it.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: vllm-config
-  namespace: ai-services
-data:
-  chat_template.jinja: |
-    {{ bos_token }}
-    {%- for message in messages %}
-      {%- if message['role'] == 'system' %}
-        {{- '<start_of_turn>user\n' + message['content'] + '<end_of_turn>\n' }}
-      {%- elif message['role'] == 'user' %}
-        {{- '<start_of_turn>user\n' + message['content'] + '<end_of_turn>\n' }}
-      {%- elif message['role'] == 'assistant' %}
-        {{- '<start_of_turn>model\n' + message['content'] + '<end_of_turn>\n' }}
-      {%- endif %}
-    {%- endfor %}
-    {%- if add_generation_prompt %}
-      {{- '<start_of_turn>model\n' }}
-    {%- endif %}
+# Internal endpoint:  http://vllm.ai-services.svc.cluster.local:8000/v1
+# External NodePort:  http://<any-node-ip>:30900/v1
 
 ---
 # ── Deployment ───────────────────────────────────────────────────────────────
@@ -48,8 +27,6 @@ metadata:
     app: vllm
 spec:
   replicas: 1
-  # Recreate is required: only one pod can hold the GPU at a time.
-  # Brief downtime (~30s) during upgrades is acceptable.
   strategy:
     type: Recreate
   selector:
@@ -60,56 +37,45 @@ spec:
       labels:
         app: vllm
     spec:
-      # Pin to nid-practice — the A40 48 GB with a working NVIDIA device plugin.
-      # (ubuntu-server's device plugin is in CrashLoopBackOff.)
       nodeSelector:
-        kubernetes.io/hostname: nid-practice
+        kubernetes.io/hostname: nidubuntu
 
-      # Give the model time to load from disk before liveness checks fire.
-      # Q4_K_M 18 GB loads in ~20-40s depending on disk speed.
       terminationGracePeriodSeconds: 60
 
       containers:
         - name: vllm
-          # Use a pinned minor version in production once validated.
-          image: vllm/vllm-openai:latest
-          imagePullPolicy: IfNotPresent
+          image: ollama/ollama:latest
+          imagePullPolicy: Always
 
-          command: ["python", "-m", "vllm.entrypoints.openai.api_server"]
+          command: ["/bin/sh", "-c"]
           args:
-            # ── Model ────────────────────────────────────────────────────────
-            # GGUF file copied from ubuntu-server's Ollama blob store.
-            # vLLM identifies GGUF by magic bytes, not file extension.
-            - --model
-            - /models/blobs/gemma4-26b-q4km.gguf
-            - --load-format
-            - gguf
-            # Serve under the same name Ollama used so DocQA config is minimal.
-            - --served-model-name
-            - gemma4:26b
-            # Also register the canonical HF name so OpenWebUI can find it.
-            - --served-model-name
-            - google/gemma-4-27b-it
+            - |
+              set -e
+              echo "=== Starting Ollama on :8000 ==="
+              ollama serve &
+              OLLAMA_PID=$!
 
-            # ── Tokenizer ────────────────────────────────────────────────────
-            # Chat template injected from ConfigMap — no HF token required.
-            - --chat-template
-            - /config/chat_template.jinja
+              echo "=== Waiting for Ollama to be ready (ollama list) ==="
+              until OLLAMA_HOST=http://localhost:8000 ollama list > /dev/null 2>&1; do
+                sleep 2
+              done
 
-            # ── Context & Memory ─────────────────────────────────────────────
-            # 8 192 tokens covers most RAG use-cases (retrieved chunks + answer).
-            # Increase to 16384 if GPU VRAM allows after profiling.
-            - --max-model-len
-            - "8192"
-            - --gpu-memory-utilization
-            - "0.90"
+              echo "=== Creating model from GGUF (hashing 17GB — may take ~5 min) ==="
+              printf 'FROM /models/gemma4-26b-q4km.gguf\n' > /tmp/Modelfile
+              OLLAMA_HOST=http://localhost:8000 ollama create gemma4:26b -f /tmp/Modelfile
 
-            # ── Server ───────────────────────────────────────────────────────
-            - --host
-            - "0.0.0.0"
-            - --port
-            - "8000"
-            - --disable-log-requests
+              echo "=== Model ready. Ollama serving gemma4:26b ==="
+              wait $OLLAMA_PID
+
+          env:
+            - name: OLLAMA_HOST
+              value: "0.0.0.0:8000"
+            - name: OLLAMA_MODELS
+              value: /var/lib/ollama
+            - name: OLLAMA_NUM_PARALLEL
+              value: "1"
+            - name: OLLAMA_MAX_LOADED_MODELS
+              value: "1"
 
           ports:
             - containerPort: 8000
@@ -118,34 +84,31 @@ spec:
           resources:
             requests:
               nvidia.com/gpu: "1"
-              memory: "4Gi"
-              cpu: "2"
+              memory: "16Gi"
+              cpu: "4"
             limits:
               nvidia.com/gpu: "1"
-              memory: "8Gi"
+              memory: "48Gi"
 
-          # /dev/shm must be large enough for CUDA IPC tensors.
-          # Default 64 MB is too small for large models.
           volumeMounts:
             - name: ollama-blobs
-              mountPath: /models/blobs
-              readOnly: true
-            - name: vllm-config
-              mountPath: /config
+              mountPath: /models
+            - name: ollama-models
+              mountPath: /var/lib/ollama
             - name: shm
               mountPath: /dev/shm
 
-          # Wait up to 5 min for the model to load before marking unhealthy.
+          # Model creation takes ~2 min; allow up to 5 min before failing startup
           startupProbe:
             httpGet:
-              path: /health
+              path: /api/tags
               port: 8000
             failureThreshold: 60
             periodSeconds: 5
 
           livenessProbe:
             httpGet:
-              path: /health
+              path: /api/tags
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 30
@@ -153,22 +116,21 @@ spec:
 
           readinessProbe:
             httpGet:
-              path: /health
+              path: /api/tags
               port: 8000
             initialDelaySeconds: 5
             periodSeconds: 10
 
       volumes:
         - name: ollama-blobs
-          # Model files copied from ubuntu-server's Ollama store to this path
-          # on nid-practice. See setup step in the vLLM runbook.
           hostPath:
-            path: /home/nidp/vllm-models
+            path: /var/lib/vllm-models/blobs
             type: DirectoryOrCreate
 
-        - name: vllm-config
-          configMap:
-            name: vllm-config
+        - name: ollama-models
+          hostPath:
+            path: /var/lib/ollama
+            type: DirectoryOrCreate
 
         - name: shm
           emptyDir:
@@ -177,8 +139,6 @@ spec:
 
 ---
 # ── Service ──────────────────────────────────────────────────────────────────
-# ClusterIP for internal cluster access (DocQA, other apps).
-# NodePort 30900 for external access (OpenWebUI, curl testing).
 apiVersion: v1
 kind: Service
 metadata:
