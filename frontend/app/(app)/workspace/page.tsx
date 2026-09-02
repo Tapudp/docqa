@@ -204,13 +204,14 @@ export default function WorkspacePage() {
           gap: "16px",
         }}
       >
-        {/* Customer logo — NID · swap the placeholder for <img src="/nid-logo.svg" alt="NID" style={{ height: "28px", width: "auto" }} /> once logo file is added to /public */}
+        {/* Customer brand — National Institute of Design (assets in /public) */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 10px", borderRadius: "7px", border: "1px solid var(--airbnb-hairline)", background: "var(--airbnb-surface-soft)" }}>
-            {/* NID logo placeholder */}
-            <div style={{ width: "22px", height: "22px", borderRadius: "4px", background: "#1e3a8a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <span style={{ fontSize: "9px", fontWeight: 800, color: "white", letterSpacing: "-0.5px" }}>NID</span>
-            </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 10px", borderRadius: "7px", border: "1px solid var(--airbnb-hairline)", background: "var(--airbnb-surface-soft)" }}>
+            <img
+              src="/nid-mark.png"
+              alt=""
+              style={{ height: "24px", width: "auto", flexShrink: 0, display: "block" }}
+            />
             <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--airbnb-ink)", letterSpacing: "-0.1px", whiteSpace: "nowrap" }}>
               National Institute of Design
             </span>

@@ -57,29 +57,21 @@ export default function LoginPage() {
         padding: "24px",
       }}
     >
-      {/* Logo */}
-      <div style={{ marginBottom: "40px", textAlign: "center" }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: "10px" }}>
-          <div
-            style={{
-              width: "36px",
-              height: "36px",
-              background: "var(--airbnb-rausch)",
-              borderRadius: "var(--radius-sm)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M4 5h12M4 10h8M4 15h10" stroke="white" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </div>
-          <span style={{ fontSize: "20px", fontWeight: 600, color: "var(--airbnb-ink)", letterSpacing: "-0.18px" }}>
+      {/* Brand — National Institute of Design */}
+      <div style={{ marginBottom: "36px", textAlign: "center" }}>
+        <img
+          src="/nid-logo.png"
+          alt="National Institute of Design, Ahmedabad"
+          style={{ width: "100%", maxWidth: "300px", height: "auto", display: "block", margin: "0 auto" }}
+        />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", marginTop: "22px" }}>
+          <div style={{ width: "28px", height: "1px", background: "var(--airbnb-hairline)" }} />
+          <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--airbnb-ink)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
             REVERB by NpuDen
           </span>
+          <div style={{ width: "28px", height: "1px", background: "var(--airbnb-hairline)" }} />
         </div>
-        <p style={{ marginTop: "8px", fontSize: "14px", color: "var(--airbnb-muted)" }}>
+        <p style={{ marginTop: "6px", fontSize: "13px", color: "var(--airbnb-muted)" }}>
           Enterprise Document Intelligence
         </p>
       </div>

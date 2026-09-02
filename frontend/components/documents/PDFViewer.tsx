@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/esm/Page/AnnotationLayer.css";
 import "react-pdf/dist/esm/Page/TextLayer.css";
@@ -13,30 +13,66 @@ interface Props {
   onPageChange: (page: number) => void;
   totalPages: number | null;
   zoom?: number;
+  onZoomChange?: (zoom: number) => void;
 }
 
-export default function PDFViewer({ documentId, page, onPageChange, totalPages, zoom = 1 }: Props) {
+export default function PDFViewer({
+  documentId,
+  page,
+  onPageChange,
+  totalPages,
+  zoom = 1,
+  onZoomChange,
+}: Props) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState<number | null>(null);
-  const [containerWidth, setContainerWidth] = useState(300);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
   const prevDocId = useRef<string | null>(null);
 
   useEffect(() => {
     pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
   }, []);
 
-  useEffect(() => {
-    if (!containerRef.current) return;
+  // Callback ref, not a mount effect: the scroll container is only rendered once the
+  // PDF has finished loading, so a []-dep effect runs while the ref is still null and
+  // silently observes nothing — which pinned the page to its initial width and made
+  // every preview render far smaller than the panel it sits in.
+  const attachContainer = useCallback((node: HTMLDivElement | null) => {
+    containerRef.current = node;
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!node) return;
+
+    setContainerWidth(Math.floor(node.clientWidth));
     const ro = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width;
       if (w) setContainerWidth(Math.floor(w));
     });
-    ro.observe(containerRef.current);
-    return () => ro.disconnect();
+    ro.observe(node);
+    observerRef.current = ro;
   }, []);
+
+  useEffect(() => () => observerRef.current?.disconnect(), []);
+
+  // Ctrl/Cmd + wheel zooms, the way every desktop PDF reader behaves.
+  // Needs a non-passive listener so preventDefault stops the browser page zoom.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !onZoomChange) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      onZoomChange(zoom + (e.deltaY < 0 ? 0.25 : -0.25));
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [zoom, onZoomChange, blobUrl]);
 
   useEffect(() => {
     if (!documentId) return;
@@ -91,15 +127,15 @@ export default function PDFViewer({ documentId, page, onPageChange, totalPages, 
   }
 
   const maxPage = numPages ?? totalPages ?? 999;
-  // zoom=1 → page fills container edge-to-edge (no grey sides)
-  // zoom>1 → page wider than container, horizontal scroll kicks in
-  const pageWidth = Math.floor(containerWidth * zoom);
+  // zoom = 1 → page fills the container edge-to-edge; > 1 → overflows and scrolls
+  const pageWidth = containerWidth > 0 ? Math.floor(containerWidth * zoom) : 0;
 
   return (
     <div
-      ref={containerRef}
+      ref={attachContainer}
       style={{
         flex: 1,
+        minHeight: 0,
         overflowY: "auto",
         overflowX: zoom > 1 ? "auto" : "hidden",
         background: "#f0f0f0",
@@ -114,18 +150,20 @@ export default function PDFViewer({ documentId, page, onPageChange, totalPages, 
         onLoadError={(err) => setError(err.message)}
         loading={null}
       >
-        <Page
-          key={`${documentId}-${page}-${zoom}`}
-          pageNumber={Math.min(page, maxPage)}
-          width={pageWidth}
-          renderTextLayer
-          renderAnnotationLayer
-          loading={
-            <div style={{ height: "400px", background: "white", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <p style={{ fontSize: "12px", color: "var(--airbnb-muted)" }}>Rendering…</p>
-            </div>
-          }
-        />
+        {pageWidth > 0 && (
+          <Page
+            key={`${documentId}-${page}-${zoom}`}
+            pageNumber={Math.min(page, maxPage)}
+            width={pageWidth}
+            renderTextLayer
+            renderAnnotationLayer
+            loading={
+              <div style={{ height: "400px", background: "white", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <p style={{ fontSize: "12px", color: "var(--airbnb-muted)" }}>Rendering…</p>
+              </div>
+            }
+          />
+        )}
       </Document>
     </div>
   );
