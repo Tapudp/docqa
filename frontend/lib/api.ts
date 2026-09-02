@@ -110,6 +110,11 @@ export const api = {
     get: (documentId: string) =>
       request<ApiDocument>(`/api/documents/${documentId}`),
 
+    getPage: (documentId: string, page: number) =>
+      request<{ page: number; total_pages: number; text: string }>(
+        `/api/documents/${documentId}/pages/${page}`,
+      ),
+
     delete: (documentId: string) =>
       request<void>(`/api/documents/${documentId}`, { method: "DELETE" }),
   },

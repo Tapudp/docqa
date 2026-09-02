@@ -1,3 +1,4 @@
+import json
 import uuid
 from typing import Annotated
 
@@ -188,6 +189,39 @@ async def get_document_file(
         media_type=doc.mime_type,
         headers={"Content-Disposition": f'inline; filename="{doc.filename}"'},
     )
+
+
+@router.get("/documents/{document_id}/pages/{page_no}")
+async def get_document_page(
+    document_id: uuid.UUID,
+    page_no: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Extracted text for one page — serves the pages.json written at parse time.
+    Used by the frontend text preview for non-PDF documents."""
+    result = await db.execute(select(Document).where(Document.id == document_id))
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    await _require_workspace_role(doc.workspace_id, current_user, db)
+
+    pages_key = f"workspaces/{doc.workspace_id}/documents/{doc.id}/pages.json"
+    try:
+        pages_data = await minio_client.download_object(pages_key)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Parsed pages not available for this document")
+
+    page_texts: list[str] = json.loads(pages_data.decode("utf-8"))
+    if page_no < 1 or page_no > len(page_texts):
+        raise HTTPException(status_code=404, detail=f"Page {page_no} out of range (1–{len(page_texts)})")
+
+    return {
+        "page": page_no,
+        "total_pages": len(page_texts),
+        "text": page_texts[page_no - 1],
+    }
 
 
 @router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

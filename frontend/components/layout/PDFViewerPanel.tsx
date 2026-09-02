@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useState } from "react";
 import { useStore } from "@/lib/store";
 import DocumentCard from "@/components/documents/DocumentCard";
+import TextPreview from "@/components/documents/TextPreview";
 import type { ApiDocument } from "@/lib/types";
 
 const PDFViewer = dynamic(() => import("@/components/documents/PDFViewer"), {
@@ -74,7 +75,7 @@ export default function RightPanel() {
           onClick={() => setRightTab("documents")}
         />
         <TabButton
-          label="PDF Viewer"
+          label="Viewer"
           icon={
             <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
               <rect x="1.5" y="1.5" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" fill="none" />
@@ -207,25 +208,8 @@ export default function RightPanel() {
                 </svg>
               </div>
               <p style={{ fontSize: "13px", color: "var(--airbnb-muted)", textAlign: "center" }}>
-                Click a citation badge to open the PDF at that page
+                Click a citation badge to open the document at that page
               </p>
-            </div>
-          ) : pdfDoc.mime_type !== "application/pdf" ? (
-            /* Non-PDF file — viewer not supported */
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px", padding: "32px", textAlign: "center" }}>
-              <div style={{ width: "52px", height: "52px", borderRadius: "var(--radius-full)", background: "var(--airbnb-surface-strong)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="#c1c1c1" strokeWidth="1.5" fill="none" />
-                  <path d="M14 2v6h6M9 13h6M9 17h4" stroke="#c1c1c1" strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
-              </div>
-              <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--airbnb-ink)", margin: 0 }}>Preview not available</p>
-              <p style={{ fontSize: "12px", color: "var(--airbnb-muted)", margin: 0, lineHeight: 1.5 }}>
-                {pdfDoc.filename.split(".").pop()?.toUpperCase()} files cannot be previewed here.<br />The document is indexed and available for Q&amp;A.
-              </p>
-              <button onClick={closePdf} style={{ marginTop: "4px", height: "32px", padding: "0 16px", background: "transparent", border: "1px solid var(--airbnb-hairline)", borderRadius: "var(--radius-sm)", fontSize: "12px", color: "var(--airbnb-body)", cursor: "pointer", fontFamily: "inherit" }}>
-                Close
-              </button>
             </div>
           ) : (
             <>
@@ -325,49 +309,57 @@ export default function RightPanel() {
                   onClick={() => setPdfPage(Math.min(pdfDoc.total_pages ?? 999, pdfPage + 1))}
                 />
 
-                {/* Divider */}
-                <div style={{ width: "1px", height: "16px", background: "var(--airbnb-hairline)", flexShrink: 0 }} />
+                {pdfDoc.mime_type === "application/pdf" && (
+                  <>
+                    {/* Divider */}
+                    <div style={{ width: "1px", height: "16px", background: "var(--airbnb-hairline)", flexShrink: 0 }} />
 
-                {/* Zoom controls */}
-                <ZoomBtn disabled={zoom <= 0.5} onClick={() => setZoom((z) => Math.max(0.5, parseFloat((z - 0.25).toFixed(2))))}>
-                  <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
-                    <path d="M2 4.5h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </ZoomBtn>
-                <button
-                  onClick={() => setZoom(1)}
-                  title="Reset zoom to fit"
-                  style={{
-                    height: "22px",
-                    minWidth: "38px",
-                    padding: "0 4px",
-                    background: "transparent",
-                    border: "1px solid var(--airbnb-hairline)",
-                    borderRadius: "var(--radius-xs)",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    color: "var(--airbnb-ink)",
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    letterSpacing: "0.01em",
-                  }}
-                >
-                  {Math.round(zoom * 100)}%
-                </button>
-                <ZoomBtn disabled={zoom >= 2.5} onClick={() => setZoom((z) => Math.min(2.5, parseFloat((z + 0.25).toFixed(2))))}>
-                  <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
-                    <path d="M4.5 2v5M2 4.5h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </ZoomBtn>
+                    {/* Zoom controls */}
+                    <ZoomBtn disabled={zoom <= 0.5} onClick={() => setZoom((z) => Math.max(0.5, parseFloat((z - 0.25).toFixed(2))))}>
+                      <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                        <path d="M2 4.5h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                    </ZoomBtn>
+                    <button
+                      onClick={() => setZoom(1)}
+                      title="Reset zoom to fit"
+                      style={{
+                        height: "22px",
+                        minWidth: "38px",
+                        padding: "0 4px",
+                        background: "transparent",
+                        border: "1px solid var(--airbnb-hairline)",
+                        borderRadius: "var(--radius-xs)",
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        color: "var(--airbnb-ink)",
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                        letterSpacing: "0.01em",
+                      }}
+                    >
+                      {Math.round(zoom * 100)}%
+                    </button>
+                    <ZoomBtn disabled={zoom >= 2.5} onClick={() => setZoom((z) => Math.min(2.5, parseFloat((z + 0.25).toFixed(2))))}>
+                      <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                        <path d="M4.5 2v5M2 4.5h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                    </ZoomBtn>
+                  </>
+                )}
               </div>
 
-              <PDFViewer
-                documentId={pdfDoc.id}
-                page={pdfPage}
-                onPageChange={setPdfPage}
-                totalPages={pdfDoc.total_pages ?? null}
-                zoom={zoom}
-              />
+              {pdfDoc.mime_type === "application/pdf" ? (
+                <PDFViewer
+                  documentId={pdfDoc.id}
+                  page={pdfPage}
+                  onPageChange={setPdfPage}
+                  totalPages={pdfDoc.total_pages ?? null}
+                  zoom={zoom}
+                />
+              ) : (
+                <TextPreview documentId={pdfDoc.id} page={pdfPage} />
+              )}
             </>
           )}
         </div>
