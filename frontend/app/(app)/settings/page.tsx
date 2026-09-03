@@ -83,11 +83,16 @@ export default function SettingsPage() {
 /* ── LLM Configuration ──────────────────────────────────────── */
 
 const PROVIDERS = [
+  { value: "vllm", label: "vLLM (local / on-prem, GPU)" },
   { value: "ollama", label: "Ollama (local / on-prem)" },
   { value: "openai", label: "OpenAI" },
   { value: "groq", label: "Groq (OpenAI-compatible)" },
   { value: "together", label: "Together.ai (OpenAI-compatible)" },
 ];
+
+// Providers that run on our own cluster: model list is fetched from the server,
+// no API key needed.
+const LOCAL_PROVIDERS = new Set(["ollama", "vllm"]);
 
 function LLMSection() {
   const [config, setConfig] = useState<LLMConfig | null>(null);
@@ -115,8 +120,8 @@ function LLMSection() {
   }, []);
 
   useEffect(() => {
-    if (config?.provider === "ollama") fetchModels();
-  }, [config?.provider, fetchModels]);
+    if (config && LOCAL_PROVIDERS.has(config.provider)) fetchModels();
+  }, [config?.provider, fetchModels]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSave() {
     if (!config) return;
@@ -149,11 +154,11 @@ function LLMSection() {
             {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
         </Field>
-        <Field label="Base URL" hint={config.provider === "ollama" ? "e.g. http://host.docker.internal:11434" : "Leave blank for provider default"}>
+        <Field label="Base URL" hint={config.provider === "vllm" ? "e.g. http://172.16.200.123:30901" : config.provider === "ollama" ? "e.g. http://host.docker.internal:11434" : "Leave blank for provider default"}>
           <input value={config.base_url} onChange={(e) => setConfig({ ...config, base_url: e.target.value })} style={inputStyle} />
         </Field>
         <Field label="Model">
-          {config.provider === "ollama" ? (
+          {LOCAL_PROVIDERS.has(config.provider) ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               {models.length > 0
                 ? <select value={config.model} onChange={(e) => setConfig({ ...config, model: e.target.value })} style={selectStyle}>
@@ -170,7 +175,7 @@ function LLMSection() {
             <input value={config.model} onChange={(e) => setConfig({ ...config, model: e.target.value })} placeholder="gpt-4o-mini" style={inputStyle} />
           )}
         </Field>
-        {config.provider !== "ollama" && (
+        {!LOCAL_PROVIDERS.has(config.provider) && (
           <Field label="API Key" hint="Shown masked after saving.">
             <input type="password" value={config.api_key} onChange={(e) => setConfig({ ...config, api_key: e.target.value })} placeholder="sk-…" style={inputStyle} autoComplete="new-password" />
           </Field>
@@ -700,7 +705,7 @@ function WorkspaceRow({ workspace, expanded, onToggle }: { workspace: ApiWorkspa
   }, [expanded, activeTab, workspace.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (llmCfg?.provider === "ollama" && llmCfg.base_url) {
+    if (llmCfg && LOCAL_PROVIDERS.has(llmCfg.provider) && llmCfg.base_url) {
       api.admin.listOllamaModels().then(setLlmModels).catch(() => {});
     }
   }, [llmCfg?.provider, llmCfg?.base_url]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -884,14 +889,14 @@ function WorkspaceRow({ workspace, expanded, onToggle }: { workspace: ApiWorkspa
                         <input value={llmCfg.base_url} onChange={(e) => setLlmCfg({ ...llmCfg, base_url: e.target.value })} style={inputStyle} placeholder="http://host.docker.internal:11434" />
                       </Field>
                       <Field label="Model">
-                        {llmCfg.provider === "ollama" && llmModels.length > 0
+                        {LOCAL_PROVIDERS.has(llmCfg.provider) && llmModels.length > 0
                           ? <select value={llmCfg.model} onChange={(e) => setLlmCfg({ ...llmCfg, model: e.target.value })} style={selectStyle}>
                               {llmModels.map((m) => <option key={m.name} value={m.name}>{m.name}{m.parameter_size ? ` (${m.parameter_size})` : ""}</option>)}
                             </select>
                           : <input value={llmCfg.model} onChange={(e) => setLlmCfg({ ...llmCfg, model: e.target.value })} style={inputStyle} placeholder="llama3.2" />
                         }
                       </Field>
-                      {llmCfg.provider !== "ollama" && (
+                      {!LOCAL_PROVIDERS.has(llmCfg.provider) && (
                         <Field label="API Key">
                           <input type="password" value={llmCfg.api_key} onChange={(e) => setLlmCfg({ ...llmCfg, api_key: e.target.value })} style={inputStyle} placeholder="sk-…" autoComplete="new-password" />
                         </Field>

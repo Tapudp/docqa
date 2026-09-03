@@ -1,0 +1,122 @@
+# vLLM — real vLLM engine (continuous batching, PagedAttention)
+#
+# Runs ALONGSIDE the Ollama deployment ("vllm", NodePort 30900) during migration.
+# Same GGUF model file, separate NodePort. Switch DocQA over only after this is
+# verified; Ollama stays as instant fallback.
+#
+# GPU sharing note: A40 48GB. gpu-memory-utilization 0.45 (~22GB) leaves room for
+# Ollama (~20GB) to load on demand as the fallback. After decommissioning Ollama,
+# raise to 0.90 for a much larger KV cache / higher concurrency.
+#
+# Tokenizer: newer vLLM loads the GGUF-embedded tokenizer via transformers'
+# gguf support. If startup fails with a tokenizer error, extract HF tokenizer
+# files to /var/lib/vllm-models/blobs/tokenizer/ on nidubuntu and add:
+#   --tokenizer=/models/tokenizer
+#
+# Apply:  kubectl apply -f vllm-engine.yaml
+# Logs:   kubectl logs -n ai-services deployment/vllm-engine -f
+# Test:   curl http://172.16.200.123:30901/v1/models
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-engine
+  namespace: ai-services
+  labels:
+    app: vllm-engine
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: vllm-engine
+  template:
+    metadata:
+      labels:
+        app: vllm-engine
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: nidubuntu
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: vllm-engine
+          image: vllm/vllm-openai:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - --model=/models/gemma4-26b-q4km.gguf
+            - --served-model-name=gemma4:26b
+            - --host=0.0.0.0
+            - --port=8000
+            - --gpu-memory-utilization=0.45
+            - --max-model-len=8192
+            - --max-num-seqs=16
+            - --enforce-eager
+          env:
+            - name: VLLM_NO_USAGE_STATS
+              value: "1"
+            - name: HF_HUB_OFFLINE
+              value: "1"
+          ports:
+            - containerPort: 8000
+              name: http
+          resources:
+            requests:
+              nvidia.com/gpu: "1"
+              memory: "24Gi"
+              cpu: "4"
+            limits:
+              nvidia.com/gpu: "1"
+              memory: "48Gi"
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: shm
+              mountPath: /dev/shm
+          # GGUF load + engine warmup can take several minutes
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            failureThreshold: 120
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: models
+          hostPath:
+            path: /var/lib/vllm-models/blobs
+            type: Directory
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: "12Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-engine
+  namespace: ai-services
+  labels:
+    app: vllm-engine
+spec:
+  selector:
+    app: vllm-engine
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      nodePort: 30901
+      protocol: TCP
+  type: NodePort

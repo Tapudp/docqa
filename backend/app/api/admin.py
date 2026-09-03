@@ -144,18 +144,41 @@ async def list_ollama_models(
     row = await db.get(SystemConfig, "llm")
     cfg = row.value if row else _default_config()
     base_url = cfg.get("base_url") or settings.llm_base_url
+    provider = cfg.get("provider") or settings.llm_provider
 
     if not base_url:
-        raise HTTPException(status_code=400, detail="No Ollama base URL configured")
+        raise HTTPException(status_code=400, detail="No LLM base URL configured")
 
-    ollama_url = base_url.rstrip("/")
+    server_url = base_url.rstrip("/")
+
+    # vLLM (and any plain OpenAI-compatible server) lists models at /v1/models;
+    # Ollama has its native /api/tags with richer metadata.
+    if provider == "vllm":
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.get(f"{server_url}/v1/models")
+                resp.raise_for_status()
+                data = resp.json()
+        except httpx.ConnectError:
+            raise HTTPException(status_code=503, detail=f"Cannot reach vLLM at {server_url}")
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=502, detail=f"vLLM error: {e.response.status_code}")
+        except Exception as e:
+            logger.exception("vLLM models error: %s", e)
+            raise HTTPException(status_code=502, detail=str(e))
+
+        return [
+            OllamaModel(name=m["id"], size=0, family=None, parameter_size=None)
+            for m in data.get("data", [])
+        ]
+
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(f"{ollama_url}/api/tags")
+            resp = await client.get(f"{server_url}/api/tags")
             resp.raise_for_status()
             data = resp.json()
     except httpx.ConnectError:
-        raise HTTPException(status_code=503, detail=f"Cannot reach Ollama at {ollama_url}")
+        raise HTTPException(status_code=503, detail=f"Cannot reach Ollama at {server_url}")
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=502, detail=f"Ollama error: {e.response.status_code}")
     except Exception as e:

@@ -17,10 +17,12 @@ def _make_client(cfg: LLMConfig) -> AsyncOpenAI:
     base_url = cfg.get("base_url") or settings.llm_base_url
     api_key = cfg.get("api_key") or settings.llm_api_key or "ollama"
 
-    if provider == "ollama":
+    # Ollama and vLLM both expose an OpenAI-compatible API under /v1.
+    # The base_url in config is the bare host (e.g. http://172.16.200.123:30901).
+    if provider in ("ollama", "vllm"):
         return AsyncOpenAI(
-            base_url=f"{base_url}/v1",
-            api_key="ollama",
+            base_url=f"{base_url.rstrip('/')}/v1",
+            api_key=api_key or provider,
             timeout=300.0,
         )
     return AsyncOpenAI(
