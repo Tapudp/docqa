@@ -160,27 +160,45 @@ export const api = {
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buf = "";
+      let finished = false;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const payload = JSON.parse(line.slice(6));
-          if (payload.type === "citations") onCitations(payload.citations);
-          else if (payload.type === "token") onToken(payload.content);
-          else if (payload.type === "done") {
-            // Backend sends final deduplicated citations in the done event —
-            // update them before clearing the streaming state.
-            if (payload.citations) onCitations(payload.citations);
-            onDone();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const payload = JSON.parse(line.slice(6));
+            if (payload.type === "citations") onCitations(payload.citations);
+            else if (payload.type === "token") onToken(payload.content);
+            else if (payload.type === "done") {
+              // Backend sends final deduplicated citations in the done event —
+              // update them before clearing the streaming state.
+              if (payload.citations) onCitations(payload.citations);
+              finished = true;
+              onDone();
+            }
+            else if (payload.type === "error") {
+              finished = true;
+              onError(payload.message);
+            }
           }
-          else if (payload.type === "error") onError(payload.message);
         }
+      } catch (e) {
+        if (!finished) {
+          finished = true;
+          onError(e instanceof Error ? e.message : "stream read failed");
+        }
+        return;
       }
+
+      // Stream ended without a done/error event — the backend dropped the
+      // connection mid-answer (e.g. a restart). Surface it instead of
+      // leaving the UI thinking forever.
+      if (!finished) onError("connection lost mid-response");
     },
   },
 
