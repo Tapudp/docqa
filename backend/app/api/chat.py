@@ -29,12 +29,22 @@ _DOMAIN_MARKERS = frozenset({
 })
 
 
+_GREETING_PREFIX_RE = re.compile(
+    r"^\s*(hi|hello|hey|greetings?|howdy|namaste)[\s,!.]+", re.IGNORECASE
+)
+
+
 def _is_conversational(text: str) -> bool:
     """True for greetings and short chit-chat that don't need RAG."""
     stripped = text.strip()
     if _CONVERSATIONAL_RE.match(stripped):
         return True
-    words = stripped.split()
+    # "hi who are you?" — strip a leading greeting and re-test, so a greeting
+    # followed by an identity/chit-chat phrase still bypasses retrieval.
+    without_greeting = _GREETING_PREFIX_RE.sub("", stripped)
+    if without_greeting != stripped and _CONVERSATIONAL_RE.match(without_greeting):
+        return True
+    words = without_greeting.split()
     return len(words) <= 4 and not any(w.lower() in _DOMAIN_MARKERS for w in words)
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -350,6 +360,11 @@ async def chat(
                         for p in cc["page_numbers"]
                     })
                     final_citations.append({**c, "page_numbers": all_pages})
+
+            # A "no answer" response cites nothing — showing sources under
+            # "this information is not available" just confuses the reader.
+            if "not available in the uploaded documents" in assistant_content.lower():
+                final_citations = []
 
             assistant_msg = Message(
                 conversation_id=conv.id,
