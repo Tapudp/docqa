@@ -55,6 +55,9 @@ spec:
             - --gpu-memory-utilization=0.58
             - --max-model-len=8192
             - --max-num-seqs=8
+            # Qwen3.5's chat template auto-opens a thinking block; without this
+            # parser the reasoning text leaks into message.content.
+            - --reasoning-parser=qwen3
             - --enforce-eager
           env:
             - name: VLLM_NO_USAGE_STATS
