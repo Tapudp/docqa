@@ -1,17 +1,19 @@
-# vLLM — real vLLM engine (continuous batching, PagedAttention)
+# vLLM engine — google/gemma-4-E2B (safetensors) on nidubuntu
 #
-# Runs ALONGSIDE the Ollama deployment ("vllm", NodePort 30900) during migration.
-# Same GGUF model file, separate NodePort. Switch DocQA over only after this is
-# verified; Ollama stays as instant fallback.
+# Runs ALONGSIDE the Ollama deployment ("vllm", NodePort 30900, gemma4:26b).
+# GPU sharing: this pod claims NO nvidia.com/gpu resource — it sees the A40
+# via NVIDIA_VISIBLE_DEVICES=all (nvidia is containerd's default runtime on
+# nidubuntu, verified 2026-09-05). K8s can't split one GPU between two pods;
+# this sidesteps the scheduler while VRAM is partitioned by config:
+#   vLLM E2B:  gpu-memory-utilization 0.30  (~14 GB: 10 weights + 4 KV)
+#   Ollama 27B: loads on demand (~20 GB), evicts after 5 min idle
 #
-# GPU sharing note: A40 48GB. gpu-memory-utilization 0.45 (~22GB) leaves room for
-# Ollama (~20GB) to load on demand as the fallback. After decommissioning Ollama,
-# raise to 0.90 for a much larger KV cache / higher concurrency.
+# Model: /var/lib/vllm-models/blobs/gemma-4-E2B (HF safetensors, ~9.6 GB,
+# downloaded from huggingface.co/google/gemma-4-E2B — Apache 2.0, ungated).
 #
-# Tokenizer: newer vLLM loads the GGUF-embedded tokenizer via transformers'
-# gguf support. If startup fails with a tokenizer error, extract HF tokenizer
-# files to /var/lib/vllm-models/blobs/tokenizer/ on nidubuntu and add:
-#   --tokenizer=/models/tokenizer
+# History: the original 27B GGUF cannot be served by vLLM (GGUF support
+# removed in 0.28) nor by any published llama.cpp image (none know the
+# gemma4 arch — Ollama bundles a private build). See DECISIONS.md.
 #
 # Apply:  kubectl apply -f vllm-engine.yaml
 # Logs:   kubectl logs -n ai-services deployment/vllm-engine -f
@@ -44,12 +46,12 @@ spec:
           image: vllm/vllm-openai:latest
           imagePullPolicy: IfNotPresent
           args:
-            - --model=/models/gemma4-26b-q4km.gguf
-            - --served-model-name=gemma4:26b
+            - --model=/models/gemma-4-E2B
+            - --served-model-name=gemma-4-e2b
             - --host=0.0.0.0
             - --port=8000
-            - --gpu-memory-utilization=0.45
-            - --max-model-len=8192
+            - --gpu-memory-utilization=0.30
+            - --max-model-len=16384
             - --max-num-seqs=16
             - --enforce-eager
           env:
@@ -57,28 +59,31 @@ spec:
               value: "1"
             - name: HF_HUB_OFFLINE
               value: "1"
+            # GPU via default nvidia runtime — intentionally NO nvidia.com/gpu
+            # resource request, so Ollama can hold the schedulable GPU.
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "compute,utility"
           ports:
             - containerPort: 8000
               name: http
           resources:
             requests:
-              nvidia.com/gpu: "1"
-              memory: "24Gi"
+              memory: "16Gi"
               cpu: "4"
             limits:
-              nvidia.com/gpu: "1"
-              memory: "48Gi"
+              memory: "40Gi"
           volumeMounts:
             - name: models
               mountPath: /models
             - name: shm
               mountPath: /dev/shm
-          # GGUF load + engine warmup can take several minutes
           startupProbe:
             httpGet:
               path: /health
               port: 8000
-            failureThreshold: 120
+            failureThreshold: 90
             periodSeconds: 10
           livenessProbe:
             httpGet:
@@ -101,7 +106,7 @@ spec:
         - name: shm
           emptyDir:
             medium: Memory
-            sizeLimit: "12Gi"
+            sizeLimit: "8Gi"
 ---
 apiVersion: v1
 kind: Service
