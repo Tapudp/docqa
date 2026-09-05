@@ -50,9 +50,11 @@ spec:
             - --served-model-name=qwen3.5-27b
             - --host=0.0.0.0
             - --port=8000
-            - --gpu-memory-utilization=0.45
-            - --max-model-len=16384
-            - --max-num-seqs=16
+            # AWQ weights are ~21GB on GPU (embeddings/head stay fp16) — 0.58
+            # (~28.5GB) leaves ~7GB KV while Ollama's 27B (~20GB) still fits.
+            - --gpu-memory-utilization=0.58
+            - --max-model-len=8192
+            - --max-num-seqs=8
             - --enforce-eager
           env:
             - name: VLLM_NO_USAGE_STATS
