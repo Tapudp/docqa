@@ -1,7 +1,5 @@
 # vLLM engine — Qwen3.5-27B-AWQ on nidubuntu
 #
-# Runs ALONGSIDE the Ollama deployment ("vllm", NodePort 30900, gemma4:26b).
-#
 # Weights live on nidubuntu's disk at /var/lib/vllm-models/blobs/ — the root
 # LV was extended 100G -> 600G on 2026-09-05 (the old 98GB root caused the
 # DiskPressure eviction loops; 17.4TB still unallocated in the VG for future
@@ -11,10 +9,9 @@
 # Arch Qwen3_5ForConditionalGeneration — verified in vLLM 0.28 registry.
 # Source copy kept at nid-practice:/home/nidp/models/Qwen3.5-27B-AWQ.
 #
-# Boot-order caveat: vLLM needs its full ~27.5GB free at startup. If this pod
-# restarts while Ollama's 27B is loaded, it crash-loops until Ollama's 5-min
-# idle eviction frees VRAM, then self-heals. Steady-state coexistence is fine
-# (measured 47.6/49GB with both loaded and answering).
+# Fallback: native Ollama on ubuntu-server — http://172.16.200.101:11434,
+# gemma4:26b on its own A40 (driver DKMS-fixed 2026-09-05). The K8s Ollama
+# deployment ("vllm") on nidubuntu is scaled to 0 and kept only as an artifact.
 #
 # Apply:  kubectl apply -f vllm-engine.yaml
 # Logs:   kubectl logs -n ai-services deployment/vllm-engine -f
@@ -55,15 +52,15 @@ spec:
             - --served-model-name=qwen3.5-27b
             - --host=0.0.0.0
             - --port=8000
-            # AWQ weights are ~21GB on GPU (embeddings/head stay fp16) — 0.58
-            # (~28.5GB) leaves ~7GB KV while Ollama's 27B (~20GB) still fits.
-            - --gpu-memory-utilization=0.58
-            - --max-model-len=8192
-            - --max-num-seqs=8
+            # Full-GPU mode since 2026-09-05: the Ollama fallback moved to
+            # ubuntu-server (.101:11434, native install, GPU). This engine owns
+            # the whole A40: ~21GB weights + ~20GB KV cache.
+            - --gpu-memory-utilization=0.92
+            - --max-model-len=32768
+            - --max-num-seqs=16
             # Qwen3.5's chat template auto-opens a thinking block; without this
             # parser the reasoning text leaks into message.content.
             - --reasoning-parser=qwen3
-            - --enforce-eager
           env:
             - name: VLLM_NO_USAGE_STATS
               value: "1"
