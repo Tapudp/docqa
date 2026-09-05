@@ -361,9 +361,15 @@ async def chat(
                     })
                     final_citations.append({**c, "page_numbers": all_pages})
 
-            # A "no answer" response cites nothing — showing sources under
-            # "this information is not available" just confuses the reader.
-            if "not available in the uploaded documents" in assistant_content.lower():
+            # A pure "no answer" response cites nothing — but models also append
+            # the sentinel as a completeness disclaimer at the END of real,
+            # fully-cited answers, so only suppress when the whole response is
+            # essentially the sentinel (short, and starts with it).
+            _lower = assistant_content.strip().lower()
+            if (
+                "not available in the uploaded documents" in _lower
+                and len(_lower) <= 200
+            ):
                 final_citations = []
 
             assistant_msg = Message(
