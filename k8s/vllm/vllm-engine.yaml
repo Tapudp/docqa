@@ -37,6 +37,10 @@ spec:
       nodeSelector:
         kubernetes.io/hostname: nidubuntu
       terminationGracePeriodSeconds: 60
+      # The legacy Ollama service is named "vllm", so K8s injects
+      # VLLM_PORT=tcp://<clusterip>:8000 which vLLM misreads as its own
+      # port config and crashes. Don't inject service env vars at all.
+      enableServiceLinks: false
       containers:
         - name: vllm-engine
           image: vllm/vllm-openai:latest
