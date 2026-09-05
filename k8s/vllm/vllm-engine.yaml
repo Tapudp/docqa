@@ -1,19 +1,15 @@
-# vLLM engine — google/gemma-4-E2B (safetensors) on nidubuntu
+# vLLM engine — Qwen3.5-27B-AWQ on nidubuntu
 #
 # Runs ALONGSIDE the Ollama deployment ("vllm", NodePort 30900, gemma4:26b).
-# GPU sharing: this pod claims NO nvidia.com/gpu resource — it sees the A40
-# via NVIDIA_VISIBLE_DEVICES=all (nvidia is containerd's default runtime on
-# nidubuntu, verified 2026-09-05). K8s can't split one GPU between two pods;
-# this sidesteps the scheduler while VRAM is partitioned by config:
-#   vLLM E2B:  gpu-memory-utilization 0.30  (~14 GB: 10 weights + 4 KV)
-#   Ollama 27B: loads on demand (~20 GB), evicts after 5 min idle
 #
-# Model: /var/lib/vllm-models/blobs/gemma-4-E2B (HF safetensors, ~9.6 GB,
-# downloaded from huggingface.co/google/gemma-4-E2B — Apache 2.0, ungated).
+# Weights live on nidubuntu's disk at /var/lib/vllm-models/blobs/ — the root
+# LV was extended 100G -> 600G on 2026-09-05 (the old 98GB root caused the
+# DiskPressure eviction loops; 17.4TB still unallocated in the VG for future
+# growth: sudo lvextend -L +NG /dev/ubuntu-vg/ubuntu-lv && sudo resize2fs ...).
 #
-# History: the original 27B GGUF cannot be served by vLLM (GGUF support
-# removed in 0.28) nor by any published llama.cpp image (none know the
-# gemma4 arch — Ollama bundles a private build). See DECISIONS.md.
+# Model: QuantTrio/Qwen3.5-27B-AWQ (Apache 2.0, ungated, AWQ 4-bit, 21GB).
+# Arch Qwen3_5ForConditionalGeneration — verified in vLLM 0.28 registry.
+# Source copy kept at nid-practice:/home/nidp/models/Qwen3.5-27B-AWQ.
 #
 # Apply:  kubectl apply -f vllm-engine.yaml
 # Logs:   kubectl logs -n ai-services deployment/vllm-engine -f
@@ -46,11 +42,11 @@ spec:
           image: vllm/vllm-openai:latest
           imagePullPolicy: IfNotPresent
           args:
-            - --model=/models/gemma-4-E2B
-            - --served-model-name=gemma-4-e2b
+            - --model=/models/Qwen3.5-27B-AWQ
+            - --served-model-name=qwen3.5-27b
             - --host=0.0.0.0
             - --port=8000
-            - --gpu-memory-utilization=0.30
+            - --gpu-memory-utilization=0.45
             - --max-model-len=16384
             - --max-num-seqs=16
             - --enforce-eager
@@ -70,13 +66,14 @@ spec:
               name: http
           resources:
             requests:
-              memory: "16Gi"
+              memory: "24Gi"
               cpu: "4"
             limits:
-              memory: "40Gi"
+              memory: "64Gi"
           volumeMounts:
             - name: models
               mountPath: /models
+              readOnly: true
             - name: shm
               mountPath: /dev/shm
           startupProbe:
