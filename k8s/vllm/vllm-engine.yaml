@@ -11,6 +11,11 @@
 # Arch Qwen3_5ForConditionalGeneration — verified in vLLM 0.28 registry.
 # Source copy kept at nid-practice:/home/nidp/models/Qwen3.5-27B-AWQ.
 #
+# Boot-order caveat: vLLM needs its full ~27.5GB free at startup. If this pod
+# restarts while Ollama's 27B is loaded, it crash-loops until Ollama's 5-min
+# idle eviction frees VRAM, then self-heals. Steady-state coexistence is fine
+# (measured 47.6/49GB with both loaded and answering).
+#
 # Apply:  kubectl apply -f vllm-engine.yaml
 # Logs:   kubectl logs -n ai-services deployment/vllm-engine -f
 # Test:   curl http://172.16.200.123:30901/v1/models
