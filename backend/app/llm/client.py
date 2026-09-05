@@ -43,14 +43,14 @@ async def stream_chat(
 
     if conversational:
         system_prompt = (
-            "You are DocQA, a helpful enterprise document assistant for the "
+            "You are REVERB, a helpful enterprise document assistant for the "
             "National Institute of Design. Respond naturally and briefly to the "
             "user's message. You help users query and understand their uploaded "
             "documents using hybrid search and AI."
         )
     else:
         system_prompt = (
-            "You are DocQA, an enterprise document assistant.\n\n"
+            "You are REVERB, an enterprise document assistant.\n\n"
             "RULES — follow these strictly:\n"
             "1. Answer using ONLY the context provided below. Never use prior knowledge as facts.\n"
             "2. The context is grouped by DOCUMENT. Each document section begins with a "
@@ -70,11 +70,20 @@ async def stream_chat(
         )
 
     client = _make_client(cfg)
+    provider = cfg.get("provider") or settings.llm_provider
+
+    extra: dict = {}
+    if conversational and provider == "vllm":
+        # Qwen-style models "think" for hundreds of tokens before answering —
+        # worth it for document questions, pure latency for greetings.
+        extra["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+
     stream = await client.chat.completions.create(
         model=model,
         messages=[{"role": "system", "content": system_prompt}, *messages],
         stream=True,
         temperature=0.2,
+        **extra,
     )
 
     async for chunk in stream:
