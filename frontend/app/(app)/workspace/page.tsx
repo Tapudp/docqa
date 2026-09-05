@@ -155,6 +155,17 @@ export default function WorkspacePage() {
         setIsStreaming(false);
         clearStreaming();
         console.error("Chat error:", err);
+        // Surface the failure in the chat itself — a silent failure looks
+        // like the app hung, which is worse than an honest error message.
+        appendMessage({
+          id: `error-${Date.now()}`,
+          conversation_id: convId!,
+          role: "assistant",
+          content:
+            "⚠️ The AI backend didn't respond. It may be restarting — please try again in a minute. If this keeps happening, contact your administrator.",
+          citations: null,
+          created_at: new Date().toISOString(),
+        });
       },
     );
   }
